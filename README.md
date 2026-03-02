@@ -1,10 +1,17 @@
-# FURPALS
+# furpals
 
-## Members
-- Ana Mae Crespo
-- Roxanne Joy Nicolas
-- Lyka Mary Rose Palma
-- Ma.Mickaella Tacuyan
+A new Flutter project.
 
-## Design
-- [Figma](https://www.figma.com/design/AEM3OIlNsQQ4F8O7ENDzSR/Furpals--Wireframe-?node-id=0-1&t=UsYZhXtDdFORriKU-1)
+## Getting Started
+
+This project is a starting point for a Flutter application.
+
+A few resources to get you started if this is your first Flutter project:
+
+- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
+- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
