@@ -145,7 +145,7 @@ class _SplashScreenState extends State<SplashScreen>
               // ── Title ─────────────────────────────────────────────────
               AnimatedBuilder(
                 animation: _titleCtrl,
-                builder: (_, __) => FadeTransition(
+                builder: (_, _) => FadeTransition(
                   opacity: _titleFade,
                   child: SlideTransition(
                     position: _titleSlide,
@@ -159,7 +159,7 @@ class _SplashScreenState extends State<SplashScreen>
               // ── Logo ──────────────────────────────────────────────────
               AnimatedBuilder(
                 animation: Listenable.merge([_logoCtrl, _floatCtrl]),
-                builder: (_, __) => FadeTransition(
+                builder: (_, _) => FadeTransition(
                   opacity: _logoFade,
                   child: ScaleTransition(
                     scale: _logoScale,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:furpals/signup.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -155,7 +156,7 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
     await Future.delayed(const Duration(seconds: 2)); // need i replace with real auth
     if (mounted) setState(() => _isLoading = false);
-    // TODO: Navigator.of(context).pushReplacementNamed('/home'); 
+    Navigator.of(context).pushReplacementNamed('/home'); 
     //navigate to home
   }
 
@@ -208,7 +209,7 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildHeader() {
     return AnimatedBuilder(
       animation: _headerCtrl,
-      builder: (_, __) => FadeTransition(
+      builder: (_, _) => FadeTransition(
         opacity: _headerFade,
         child: SlideTransition(
           position: _headerSlide,
@@ -310,7 +311,7 @@ class _LoginScreenState extends State<LoginScreen>
                 // email field
                 AnimatedBuilder(
                   animation: _fieldCtrl,
-                  builder: (_, __) => FadeTransition(
+                  builder: (_, _) => FadeTransition(
                     opacity: _field1Fade,
                     child: SlideTransition(
                       position: _field1Slide,
@@ -343,7 +344,7 @@ class _LoginScreenState extends State<LoginScreen>
                 // password field
                 AnimatedBuilder(
                   animation: _fieldCtrl,
-                  builder: (_, __) => FadeTransition(
+                  builder: (_, _) => FadeTransition(
                     opacity: _field2Fade,
                     child: SlideTransition(
                       position: _field2Slide,
@@ -388,7 +389,7 @@ class _LoginScreenState extends State<LoginScreen>
                 // remember me at forgot pass
                 AnimatedBuilder(
                   animation: _buttonCtrl,
-                  builder: (_, __) => FadeTransition(
+                  builder: (_, _) => FadeTransition(
                     opacity: _buttonFade,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -456,7 +457,7 @@ class _LoginScreenState extends State<LoginScreen>
                 //log in btn
                 AnimatedBuilder(
                   animation: _buttonCtrl,
-                  builder: (_, __) => FadeTransition(
+                  builder: (_, _) => FadeTransition(
                     opacity: _buttonFade,
                     child: SlideTransition(
                       position: _buttonSlide,
@@ -500,6 +501,7 @@ class _LoginScreenState extends State<LoginScreen>
                                           fontSize: 16,
                                           letterSpacing: 1.5,
                                           color: const Color(0xFF3A2510),
+                                          
                                         ),
                                       ),
                                     ],
@@ -516,12 +518,12 @@ class _LoginScreenState extends State<LoginScreen>
                 // sign up btn
                 AnimatedBuilder(
                   animation: _buttonCtrl,
-                  builder: (_, __) => FadeTransition(
+                  builder: (_, _) => FadeTransition(
                     opacity: _buttonFade,
                     child: Center(
                       child: GestureDetector(
-                        //onTap: () =>
-                          //  Navigator.of(context).pushNamed('/signup'),
+                        onTap: () =>
+                            Navigator.of(context).pushNamed('/signup'),
                         child: RichText(
                           text: TextSpan(
                             style: GoogleFonts.josefinSans(
@@ -552,7 +554,7 @@ class _LoginScreenState extends State<LoginScreen>
                 // continue 
                 AnimatedBuilder(
                   animation: _buttonCtrl,
-                  builder: (_, __) => FadeTransition(
+                  builder: (_, _) => FadeTransition(
                     opacity: _socialFade,
                     child: Column(
                       children: [
