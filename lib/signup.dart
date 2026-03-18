@@ -107,7 +107,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Future<void> _onSubmit() async { // create acc btn part
     if (!_validate()) {     // checking if field are correct input
-      _showToast('Please fix the errors above.', isError: true);
+      _showToast('Almost there! Please fill in all required fields 🐾', isError: true);
       return;
     }
     // checking if agree in legal agree
