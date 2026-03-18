@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "933596402950",
+    "project_id": "furpals-13a2f",
+    "storage_bucket": "furpals-13a2f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:933596402950:android:26c69f9192c2c8f7ebfa87",
+        "android_client_info": {
+          "package_name": "com.example.furpals"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "933596402950-jhtgp2ucne2tm1hdsuarrasj95lvn27q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoup9KiHqgk0QZI6j_40QBmORw78-j010"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "933596402950-jhtgp2ucne2tm1hdsuarrasj95lvn27q.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "933596402950-2k19oiqdisblpsagqncs2jeas53v3fde.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.furpals"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
