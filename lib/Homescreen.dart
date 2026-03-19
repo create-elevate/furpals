@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:furpals/NotificationScreen.dart';
+import 'package:furpals/calendar.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:furpals/lost&found.dart';
 
 class FurPalsColors {
   static const blush       = Color(0xFFF9C8D0);
@@ -80,11 +82,11 @@ class _MainShellState extends State<MainShell> {
   Widget _currentBody() {
     switch (_selectedNav) {
       case 0:
-        return const LostFoundBody();
+        return const LostFoundScreen();
       case 3:
         return const PetsBody();
       case 4:
-        return const ProfileBody();
+        return const CalendarScreen();
       default:
         return HomeBody(onNavTap: _onNavTap);
     }
@@ -1727,14 +1729,7 @@ class _PostModalState extends State<PostModal> {
 
 // Placeholder for empty screens
 
-class LostFoundBody extends StatelessWidget {
-  const LostFoundBody({super.key});
 
-  @override
-  Widget build(BuildContext context) => const _PlaceholderBody(
-      emoji: '🔍', title: 'Lost & Found',
-      subtitle: 'Help reunite pets with their families');
-}
 
 class PetsBody extends StatelessWidget {
   const PetsBody({super.key});
