@@ -48,7 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (mounted) Navigator.pushReplacementNamed(context, '/home');
   }
 
-  // ── FORGOT PASSWORD ───────────────────────────────────────────────────────
+  //  FORGOT PASSWORD 
   void _showForgotPassword() {
     // Pre-fill with whatever is already typed in the email field
     final prefill = _emailController.text.trim();
@@ -202,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ] else ...[
-                      // ── SUCCESS STATE ──────────────────────────────────
+                      //  SUCCESS STATE 
                       const SizedBox(height: 10),
                       Center(
                         child: Container(
@@ -291,7 +291,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── TOP SECTION — tricolor gradient ──────────────────────────────────────
+  //TOP SECTION — tricolor gradient 
   Widget _buildTopSection(double height) {
     return Container(
       width: double.infinity,
@@ -371,7 +371,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── BOTTOM SECTION — white form ───────────────────────────────────────────
+  // BOTTOM SECTION — white form 
   Widget _buildBottomSection() {
     return Container(
       color: Colors.white,
@@ -560,7 +560,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── INPUT FIELD ───────────────────────────────────────────────────────────
+  //  INPUT FIELD 
   Widget _buildInputField({
     required TextEditingController controller,
     required String hint,
@@ -641,7 +641,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── SOCIAL BUTTON ─────────────────────────────────────────────────────────
+  //  SOCIAL BUTTON 
   Widget _socialButton({
     required String assetPath,
     required Color fallbackColor,
@@ -672,7 +672,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── GOOGLE BUTTON ─────────────────────────────────────────────────────────
+  // GOOGLE BUTTON 
   Widget _googleButton() {
     return GestureDetector(
       onTap: () {},
@@ -702,7 +702,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ── GOOGLE LOGO PAINTER ───────────────────────────────────────────────────────
+//  GOOGLE LOGO PAINTER 
 class _GoogleLogoPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -774,7 +774,7 @@ class _GoogleLogoPainter extends CustomPainter {
   bool shouldRepaint(_) => false;
 }
 
-// ── CURVE PAINTER ─────────────────────────────────────────────────────────────
+// CURVE PAINTER 
 class _CurveClipper extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

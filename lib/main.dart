@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:furpals/lost&found.dart';
+import 'package:furpals/lostfoundprofile.dart';
 import 'package:furpals/signup.dart';
 import 'package:furpals/login.dart';
 import 'package:furpals/Homescreen.dart';
@@ -45,6 +47,8 @@ class MyApp extends StatelessWidget {
         '/signup': (context) => const SignUpScreen(),
         '/home': (context) => const Homescreen(),
         '/notifications': (context) => const NotificationScreen(),
+        '/lf':(context) => const LostFoundScreen(),
+        '/lostandfoundprofile': (context)=> const LostFoundProfileScreen(pet: {},),
       },
     );
   }

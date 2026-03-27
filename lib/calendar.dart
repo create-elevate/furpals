@@ -123,7 +123,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // ── CALENDAR (behind sheet) ────────────────────────────────────
+            // CALENDAR (behind sheet)
             Column(
               children: [
                 _buildTopBar(context),
@@ -165,7 +165,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ],
             ),
 
-            // ── DRAGGABLE BOTTOM SHEET ─────────────────────────────────────
+            // DRAGGABLE BOTTOM SHEET 
             DraggableScrollableSheet(
               controller: _sheetController,
               initialChildSize: _initChildSize,
@@ -193,7 +193,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // ── DRAG HANDLE (tap or drag to snap) ──────────
+                            //  DRAG HANDLE (tap or drag to snap) 
                             GestureDetector(
                               onTap: () {
                                 if (_sheetController.size < 0.6) {
@@ -220,7 +220,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               ),
                             ),
 
-                            // ── FORM ───────────────────────────────────────
+                            // FORM 
                             Padding(
                               padding:
                                   const EdgeInsets.fromLTRB(20, 4, 20, 36),
@@ -280,7 +280,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ── TOP BAR ───────────────────────────────────────────────────────────────
+  //  TOP BAR 
  Widget _buildTopBar (BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
@@ -351,7 +351,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ── CALENDAR GRID ─────────────────────────────────────────────────────────
+  //CALENDAR GRID 
   Widget _buildMonthHeader() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -365,7 +365,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   fontWeight: FontWeight.bold,
                   color: Colors.black87),
             ),
-            // ── TAPPABLE YEAR ──────────────────────────────────────────
+            //TAPPABLE YEAR 
             GestureDetector(
               onTap: _showYearPicker,
               child: Container(
@@ -551,7 +551,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Column(children: rows);
   }
 
-  // ── SHEET WIDGETS ─────────────────────────────────────────────────────────
+  // SHEET WIDGETS 
   Widget _buildSheetHeader() {
     return Row(
       children: [
