@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,38 +26,86 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  // ── LOG IN ─────────────────────────────────────────────────────────────────
   void _login() async {
     final email    = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please enter your email and password.',
-            style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: const Color(0xFFE8445A),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
+      _showSnack('Please enter your email and password.');
       return;
     }
 
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1)); // TODO: replace with real auth
-    setState(() => _isLoading = false);
-    if (mounted) Navigator.pushReplacementNamed(context, '/home');
+
+    try {
+      // Sign in with Firebase Authentication
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      // Update online status in Firestore
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .update({'isOnline': true});
+      }
+
+      if (_rememberMe) {
+        await _setRememberMe(true);
+      } else {
+        await _clearRememberMe();
+      }
+
+      if (mounted) Navigator.pushReplacementNamed(context, '/home');
+    } on FirebaseAuthException catch (e) {
+      final msg = switch (e.code) {
+        'user-not-found'   => 'No account found with that email.',
+        'wrong-password'   => 'Incorrect password. Please try again.',
+        'invalid-email'    => 'Please enter a valid email address.',
+        'user-disabled'    => 'This account has been disabled.',
+        'too-many-requests'=> 'Too many attempts. Please try again later.',
+        _                  => e.message ?? 'Login failed. Please try again.',
+      };
+      if (mounted) _showSnack(msg);
+    } catch (e) {
+      if (mounted) _showSnack('Something went wrong. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  // ── FORGOT PASSWORD ───────────────────────────────────────────────────────
+  Future<void> _setRememberMe(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('remember_me', value);
+  }
+
+  Future<void> _clearRememberMe() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('remember_me');
+  }
+
+  void _showSnack(String msg, {Color color = const Color(0xFFE8445A)}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg,
+            style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600)),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  // ── FORGOT PASSWORD ────────────────────────────────────────────────────────
   void _showForgotPassword() {
-    // Pre-fill with whatever is already typed in the email field
     final prefill = _emailController.text.trim();
     final forgotController = TextEditingController(text: prefill);
-    bool sending  = false;
-    bool sent     = false;
+    bool sending = false;
+    bool sent    = false;
 
     showModalBottomSheet(
       context: context,
@@ -64,9 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return StatefulBuilder(
           builder: (ctx, setModal) {
             return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              ),
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
               child: Container(
                 decoration: const BoxDecoration(
                   color: Colors.white,
@@ -77,35 +126,26 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // handle
+                    // drag handle
                     Center(
                       child: Container(
                         width: 40, height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2)),
                       ),
                     ),
                     const SizedBox(height: 10),
 
                     if (!sent) ...[
-                      Text(
-                        'Forgot Password?',
-                        style: GoogleFonts.josefinSans(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.black87,
-                        ),
-                      ),
+                      Text('Forgot Password?',
+                          style: GoogleFonts.josefinSans(
+                              fontSize: 22, fontWeight: FontWeight.w900,
+                              color: Colors.black87)),
                       const SizedBox(height: 6),
-                      Text(
-                        'Enter your email and we\'ll send you a reset link.',
-                        style: GoogleFonts.josefinSans(
-                          fontSize: 14,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
+                      Text("Enter your email and we'll send you a reset link.",
+                          style: GoogleFonts.josefinSans(
+                              fontSize: 14, color: Colors.grey.shade500)),
                       const SizedBox(height: 10),
 
                       // Email field
@@ -117,8 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Row(
                           children: [
-                            const Icon(Icons.email_outlined,
-                                color: Colors.grey, size: 20),
+                            const Icon(Icons.email_outlined, color: Colors.grey, size: 20),
                             const SizedBox(width: 10),
                             Expanded(
                               child: TextField(
@@ -142,90 +181,80 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       // Send button
                       SizedBox(
-                        width: double.infinity,
-                        height: 52,
+                        width: double.infinity, height: 52,
                         child: ElevatedButton(
                           onPressed: sending
                               ? null
                               : () async {
-                                  final email =
-                                      forgotController.text.trim();
-                                  if (email.isEmpty ||
-                                      !email.contains('@')) {
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(
+                                  final em = forgotController.text.trim();
+                                  if (em.isEmpty || !em.contains('@')) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text(
-                                          'Please enter a valid email.',
-                                          style: GoogleFonts.josefinSans(),
-                                        ),
-                                        backgroundColor:
-                                            const Color(0xFFE8445A),
+                                        content: Text('Please enter a valid email.',
+                                            style: GoogleFonts.josefinSans()),
+                                        backgroundColor: const Color(0xFFE8445A),
                                       ),
                                     );
                                     return;
                                   }
                                   setModal(() => sending = true);
-                                  // TODO: replace with real password reset API call
-                                  await Future.delayed(
-                                      const Duration(seconds: 2));
-                                  setModal(() {
-                                    sending = false;
-                                    sent    = true;
-                                  });
+                                  try {
+                                    // Firebase sends the real reset email
+                                    await FirebaseAuth.instance
+                                        .sendPasswordResetEmail(email: em);
+                                    setModal(() { sending = false; sent = true; });
+                                  } on FirebaseAuthException catch (e) {
+                                    setModal(() => sending = false);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            e.code == 'user-not-found'
+                                                ? 'No account found with that email.'
+                                                : e.message ?? 'Error sending reset email.',
+                                            style: GoogleFonts.josefinSans()),
+                                          backgroundColor: const Color(0xFFE8445A),
+                                        ),
+                                      );
+                                    }
+                                  }
                                 },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFEDD9B3),
                             foregroundColor: Colors.black87,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
+                                borderRadius: BorderRadius.circular(30)),
                           ),
                           child: sending
                               ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
+                                  width: 22, height: 22,
                                   child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: Colors.black54,
-                                  ),
-                                )
-                              : Text(
-                                  '🐾  SEND RESET LINK',
+                                      strokeWidth: 2.5, color: Colors.black54))
+                              : Text('🐾  SEND RESET LINK',
                                   style: GoogleFonts.josefinSans(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
+                                      fontSize: 15, fontWeight: FontWeight.w900,
+                                      letterSpacing: 1)),
                         ),
                       ),
                     ] else ...[
-                      // ── SUCCESS STATE ──────────────────────────────────
+                      // ── SUCCESS STATE ────────────────────────────────────
                       const SizedBox(height: 10),
                       Center(
                         child: Container(
-                          width: 72,
-                          height: 72,
+                          width: 72, height: 72,
                           decoration: const BoxDecoration(
-                            color: Color(0xFFEDD9B3),
-                            shape: BoxShape.circle,
-                          ),
+                              color: Color(0xFFEDD9B3), shape: BoxShape.circle),
                           child: const Icon(Icons.mark_email_read_outlined,
                               size: 36, color: Colors.black87),
                         ),
                       ),
                       const SizedBox(height: 10),
                       Center(
-                        child: Text(
-                          'Check your email!',
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        child: Text('Check your email!',
+                            style: GoogleFonts.josefinSans(
+                                fontSize: 22, fontWeight: FontWeight.w900,
+                                color: Colors.black87)),
                       ),
                       const SizedBox(height: 8),
                       Center(
@@ -233,15 +262,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           'We sent a password reset link to\n${forgotController.text.trim()}',
                           textAlign: TextAlign.center,
                           style: GoogleFonts.josefinSans(
-                            fontSize: 14,
-                            color: Colors.grey.shade500,
-                          ),
+                              fontSize: 14, color: Colors.grey.shade500),
                         ),
                       ),
                       const SizedBox(height: 14),
                       SizedBox(
-                        width: double.infinity,
-                        height: 52,
+                        width: double.infinity, height: 52,
                         child: ElevatedButton(
                           onPressed: () => Navigator.pop(ctx),
                           style: ElevatedButton.styleFrom(
@@ -249,16 +275,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
+                                borderRadius: BorderRadius.circular(30)),
                           ),
-                          child: Text(
-                            'Got it!',
-                            style: GoogleFonts.josefinSans(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
+                          child: Text('Got it!',
+                              style: GoogleFonts.josefinSans(
+                                  fontSize: 15, fontWeight: FontWeight.w900)),
                         ),
                       ),
                     ],
@@ -291,52 +312,37 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── TOP SECTION — tricolor gradient ──────────────────────────────────────
+  // ── TOP SECTION ────────────────────────────────────────────────────────────
   Widget _buildTopSection(double height) {
     return Container(
-      width: double.infinity,
-      height: height,
+      width: double.infinity, height: height,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFFCDDE8), // 0%   — pink
-            Color(0xFFFFE8D2), // 50%  — peach
-            Color(0xFFD4F0E4), // 100% — mint green
-          ],
+          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          colors: [Color(0xFFFCDDE8), Color(0xFFFFE8D2), Color(0xFFD4F0E4)],
           stops: [0.0, 0.5, 1.0],
         ),
       ),
       child: Stack(
         children: [
-          // curved bottom clip
           Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
+            bottom: 0, left: 0, right: 0,
             child: CustomPaint(
               size: const Size(double.infinity, 40),
               painter: _CurveClipper(),
             ),
           ),
-          // content
           Padding(
             padding: const EdgeInsets.fromLTRB(28, 60, 28, 20),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // pet mascot
-                Container(
-                  width: 150,
-                  height: 150,
+                SizedBox(
+                  width: 150, height: 150,
                   child: ClipOval(
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Center(
-                      ),
-                    ),
+                    child: Image.asset('assets/images/logo.png',
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox()),
                   ),
                 ),
                 const SizedBox(width: 20),
@@ -344,23 +350,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // furpals logo text
-                    Text(
-                      'furpals',
-                      style: GoogleFonts.modak(
-                        fontSize: 36,
-                        color: const Color(0xFF5C3D1E),
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    Text(
-                      'Hello, welcome!',
-                      style: GoogleFonts.josefinSans(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF5C3D1E),
-                      ),
-                    ),
+                    Text('furpals',
+                        style: GoogleFonts.modak(
+                            fontSize: 36, color: const Color(0xFF5C3D1E),
+                            letterSpacing: 1)),
+                    Text('Hello, welcome!',
+                        style: GoogleFonts.josefinSans(
+                            fontSize: 16, fontWeight: FontWeight.w800,
+                            color: const Color(0xFF5C3D1E))),
                   ],
                 ),
               ],
@@ -371,7 +368,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── BOTTOM SECTION — white form ───────────────────────────────────────────
+  // ── BOTTOM SECTION ─────────────────────────────────────────────────────────
   Widget _buildBottomSection() {
     return Container(
       color: Colors.white,
@@ -381,23 +378,16 @@ class _LoginScreenState extends State<LoginScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           Center(
-            child: Text(
-              'Enter To Log In',
-              style: GoogleFonts.josefinSans(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: Colors.black87,
-              ),
-            ),
+            child: Text('Enter To Log In',
+                style: GoogleFonts.josefinSans(
+                    fontSize: 22, fontWeight: FontWeight.w900,
+                    color: Colors.black87)),
           ),
           const SizedBox(height: 12),
 
-          // Email
           Text('Email or Username',
               style: GoogleFonts.josefinSans(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87)),
+                  fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87)),
           const SizedBox(height: 8),
           _buildInputField(
             controller: _emailController,
@@ -408,17 +398,14 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 10),
 
-          // Password
           Text('Enter password',
               style: GoogleFonts.josefinSans(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87)),
+                  fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87)),
           const SizedBox(height: 8),
           _buildPasswordField(),
           const SizedBox(height: 12),
 
-          // Remember me + Forgot password
+          // Remember me + Forgot
           Row(
             children: [
               GestureDetector(
@@ -426,39 +413,30 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Row(
                   children: [
                     Container(
-                      width: 22,
-                      height: 22,
+                      width: 22, height: 22,
                       decoration: BoxDecoration(
                         color: _rememberMe
-                            ? const Color(0xFFE8445A)
-                            : Colors.grey.shade200,
+                            ? const Color(0xFFE8445A) : Colors.grey.shade200,
                         shape: BoxShape.circle,
                       ),
                       child: _rememberMe
-                          ? const Icon(Icons.check,
-                              color: Colors.white, size: 14)
+                          ? const Icon(Icons.check, color: Colors.white, size: 14)
                           : null,
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      'Remember me',
-                      style: GoogleFonts.josefinSans(
-                          fontSize: 13, color: Colors.black54),
-                    ),
+                    Text('Remember me',
+                        style: GoogleFonts.josefinSans(
+                            fontSize: 13, color: Colors.black54)),
                   ],
                 ),
               ),
               const Spacer(),
               GestureDetector(
                 onTap: _showForgotPassword,
-                child: Text(
-                  'Forgot password?',
-                  style: GoogleFonts.josefinSans(
-                    fontSize: 13,
-                    color: Colors.black54,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: Text('Forgot password?',
+                    style: GoogleFonts.josefinSans(
+                        fontSize: 13, color: Colors.black54,
+                        fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -466,8 +444,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
           // LOG IN button
           SizedBox(
-            width: double.infinity,
-            height: 58,
+            width: double.infinity, height: 58,
             child: ElevatedButton(
               onPressed: _isLoading ? null : _login,
               style: ElevatedButton.styleFrom(
@@ -475,24 +452,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 foregroundColor: Colors.black87,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
+                    borderRadius: BorderRadius.circular(16)),
               ),
               child: _isLoading
                   ? const SizedBox(
-                      width: 24,
-                      height: 24,
+                      width: 24, height: 24,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2.5, color: Colors.black54),
-                    )
-                  : Text(
-                      '🐾  LOG IN',
+                          strokeWidth: 2.5, color: Colors.black54))
+                  : Text('🐾  LOG IN',
                       style: GoogleFonts.holtwoodOneSc(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
+                          fontSize: 20, fontWeight: FontWeight.w900,
+                          letterSpacing: 1.5)),
             ),
           ),
           const SizedBox(height: 10),
@@ -512,10 +482,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextSpan(
                       text: 'SIGN UP',
                       style: GoogleFonts.josefinSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.black87,
-                      ),
+                          fontSize: 13, fontWeight: FontWeight.w900,
+                          color: Colors.black87),
                     ),
                   ],
                 ),
@@ -524,17 +492,15 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Or continue with
+          // Divider
           Row(
             children: [
               Expanded(child: Divider(color: Colors.grey.shade300)),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text(
-                  'Or continue with',
-                  style: GoogleFonts.josefinSans(
-                      fontSize: 12, color: Colors.grey.shade400),
-                ),
+                child: Text('Or continue with',
+                    style: GoogleFonts.josefinSans(
+                        fontSize: 12, color: Colors.grey.shade400)),
               ),
               Expanded(child: Divider(color: Colors.grey.shade300)),
             ],
@@ -560,7 +526,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── INPUT FIELD ───────────────────────────────────────────────────────────
+  // ── INPUT FIELD ────────────────────────────────────────────────────────────
   Widget _buildInputField({
     required TextEditingController controller,
     required String hint,
@@ -570,9 +536,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFD9EEF3),
-        borderRadius: BorderRadius.circular(30),
-      ),
+          color: const Color(0xFFD9EEF3),
+          borderRadius: BorderRadius.circular(30)),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
@@ -587,8 +552,8 @@ class _LoginScreenState extends State<LoginScreen> {
               style: GoogleFonts.josefinSans(fontSize: 14),
               decoration: InputDecoration(
                 hintText: hint,
-                hintStyle:
-                    GoogleFonts.josefinSans(color: Colors.grey.shade700, fontSize: 14),
+                hintStyle: GoogleFonts.josefinSans(
+                    color: Colors.grey.shade700, fontSize: 14),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 14),
               ),
@@ -599,18 +564,18 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // ── PASSWORD FIELD ─────────────────────────────────────────────────────────
   Widget _buildPasswordField() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFD9EEF3),
-        borderRadius: BorderRadius.circular(30),
-      ),
+          color: const Color(0xFFD9EEF3),
+          borderRadius: BorderRadius.circular(30)),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           Image.asset('assets/icons/password_icon.png', width: 22, height: 22,
               errorBuilder: (_, __, ___) =>
-                  Icon(Icons.key_outlined, color: Colors.black, size: 22)),
+                  const Icon(Icons.key_outlined, color: Colors.black, size: 22)),
           const SizedBox(width: 10),
           Expanded(
             child: TextField(
@@ -619,8 +584,8 @@ class _LoginScreenState extends State<LoginScreen> {
               style: GoogleFonts.josefinSans(fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Enter password',
-                hintStyle:
-                    GoogleFonts.josefinSans(color: Colors.grey.shade700, fontSize: 14),
+                hintStyle: GoogleFonts.josefinSans(
+                    color: Colors.grey.shade700, fontSize: 14),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 14),
               ),
@@ -632,16 +597,14 @@ class _LoginScreenState extends State<LoginScreen> {
               _obscurePassword
                   ? Icons.visibility_outlined
                   : Icons.visibility_off_outlined,
-              color: Colors.grey.shade700,
-              size: 22,
-            ),
+              color: Colors.grey.shade700, size: 22),
           ),
         ],
       ),
     );
   }
 
-  // ── SOCIAL BUTTON ─────────────────────────────────────────────────────────
+  // ── SOCIAL BUTTON ──────────────────────────────────────────────────────────
   Widget _socialButton({
     required String assetPath,
     required Color fallbackColor,
@@ -651,16 +614,14 @@ class _LoginScreenState extends State<LoginScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 52,
-        height: 52,
+        width: 52, height: 52,
         decoration: BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
                 color: Colors.black.withOpacity(0.08),
-                blurRadius: 8,
-                offset: const Offset(0, 2)),
+                blurRadius: 8, offset: const Offset(0, 2)),
           ],
         ),
         child: Center(
@@ -672,28 +633,24 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── GOOGLE BUTTON ─────────────────────────────────────────────────────────
+  // ── GOOGLE BUTTON ──────────────────────────────────────────────────────────
   Widget _googleButton() {
     return GestureDetector(
       onTap: () {},
       child: Container(
-        width: 52,
-        height: 52,
+        width: 52, height: 52,
         decoration: BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 8, offset: const Offset(0, 2)),
           ],
         ),
         child: Center(
           child: SizedBox(
-            width: 26,
-            height: 26,
+            width: 26, height: 26,
             child: CustomPaint(painter: _GoogleLogoPainter()),
           ),
         ),
@@ -711,62 +668,31 @@ class _GoogleLogoPainter extends CustomPainter {
     final center = Offset(w / 2, h / 2);
     final radius = w / 2;
 
-    // Clip to circle
     canvas.clipPath(Path()..addOval(Rect.fromCircle(center: center, radius: radius)));
-
-    // White background
     canvas.drawCircle(center, radius, Paint()..color = Colors.white);
 
     final rect = Rect.fromCircle(center: center, radius: radius);
-
-    // Blue arc (bottom-left)
-    canvas.drawArc(rect, 2.3, 1.6, true,
-        Paint()..color = const Color(0xFF4285F4));
-
-    // Red arc (top-left)
-    canvas.drawArc(rect, 3.9, 1.6, true,
-        Paint()..color = const Color(0xFFEA4335));
-
-    // Yellow arc (top-right)
-    canvas.drawArc(rect, 5.5, 0.85, true,
-        Paint()..color = const Color(0xFFFBBC05));
-
-    // Green arc (bottom-right)
-    canvas.drawArc(rect, 0.0, 1.15, true,
-        Paint()..color = const Color(0xFF34A853));
-
-    // White center circle (donut hole)
-    canvas.drawCircle(center, radius * 0.55,
-        Paint()..color = Colors.white);
-
-    // White horizontal bar for the G cutout
+    canvas.drawArc(rect, 2.3, 1.6, true, Paint()..color = const Color(0xFF4285F4));
+    canvas.drawArc(rect, 3.9, 1.6, true, Paint()..color = const Color(0xFFEA4335));
+    canvas.drawArc(rect, 5.5, 0.85, true, Paint()..color = const Color(0xFFFBBC05));
+    canvas.drawArc(rect, 0.0, 1.15, true, Paint()..color = const Color(0xFF34A853));
+    canvas.drawCircle(center, radius * 0.55, Paint()..color = Colors.white);
     canvas.drawRect(
       Rect.fromLTWH(center.dx - radius * 0.05, center.dy - radius * 0.18,
           radius * 1.05, radius * 0.36),
       Paint()..color = Colors.white,
     );
-
-    // Green inner fill for right side of G bar
     canvas.drawRect(
       Rect.fromLTWH(center.dx + radius * 0.18, center.dy - radius * 0.18,
           radius * 0.82, radius * 0.36),
       Paint()..color = const Color(0xFF34A853),
     );
-
-    // Final white center donut
-    canvas.drawCircle(center, radius * 0.48,
-        Paint()..color = Colors.white);
-
-    // Re-draw white cutout to clean up center
-    canvas.drawCircle(center, radius * 0.45,
-        Paint()..color = Colors.white);
-
-    // G bar - colored fill on right half
-    final gBarPaint = Paint()..color = const Color(0xFF4285F4);
+    canvas.drawCircle(center, radius * 0.48, Paint()..color = Colors.white);
+    canvas.drawCircle(center, radius * 0.45, Paint()..color = Colors.white);
     canvas.drawRect(
       Rect.fromLTWH(center.dx, center.dy - radius * 0.16,
           radius * 0.9, radius * 0.32),
-      gBarPaint,
+      Paint()..color = const Color(0xFF4285F4),
     );
   }
 
@@ -778,20 +704,16 @@ class _GoogleLogoPainter extends CustomPainter {
 class _CurveClipper extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // white fill path
     final fillPath = Path();
     fillPath.moveTo(0, size.height);
-    fillPath.quadraticBezierTo(
-        size.width / 2, -size.height, size.width, size.height);
+    fillPath.quadraticBezierTo(size.width / 2, -size.height, size.width, size.height);
     fillPath.lineTo(size.width, size.height);
     fillPath.close();
     canvas.drawPath(fillPath, Paint()..color = Colors.white);
 
-    // black stroke ONLY along the curve line (not the bottom edge)
     final strokePath = Path();
     strokePath.moveTo(0, size.height);
-    strokePath.quadraticBezierTo(
-        size.width / 2, -size.height, size.width, size.height);
+    strokePath.quadraticBezierTo(size.width / 2, -size.height, size.width, size.height);
     canvas.drawPath(
       strokePath,
       Paint()

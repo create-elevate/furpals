@@ -1,94 +1,90 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';     // wala ka muna gagalawin dito  sa screen ate lyka kase my aayusin pa ako
+import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _C {
-  static const gradientTop    = Color(0xFFF9C8D0); 
-  static const gradientMid    = Color(0xFFF7D9B5); 
-  static const gradientBottom = Color(0xFFC5E8E0); 
-  static const brown          = Color(0xFF6B4226); 
-  static const dark           = Color(0xFF111111); 
-  static const grey           = Color(0xFF999999); 
-  static const blue           = Color(0xFF2563EB); 
-  static const inputBg        = Color(0xFFCFE8E3); 
+  static const gradientTop    = Color(0xFFF9C8D0);
+  static const gradientMid    = Color(0xFFF7D9B5);
+  static const gradientBottom = Color(0xFFC5E8E0);
+  static const brown          = Color(0xFF6B4226);
+  static const dark           = Color(0xFF111111);
+  static const grey           = Color(0xFF999999);
+  static const blue           = Color(0xFF2563EB);
+  static const inputBg        = Color(0xFFCFE8E3);
   static const white          = Color(0xFFFFFFFF);
-  static const btnTan         = Color(0xFFE8C9A0); 
-  static const btnClose       = Color(0xFFCCE8F0); 
-  static const modalBg        = Color(0xFFE8C9A0); 
-  static const error          = Color(0xFFC0392B); 
-  static const success        = Color(0xFF2D9E60); 
+  static const btnTan         = Color(0xFFE8C9A0);
+  static const btnClose       = Color(0xFFCCE8F0);
+  static const modalBg        = Color(0xFFE8C9A0);
+  static const error          = Color(0xFFC0392B);
+  static const success        = Color(0xFF2D9E60);
 }
-class _AuthService { // backend service
 
-  // this need to change to real server 
-  static const _baseUrl = 'https://your-api.com/api';
+// ── FIREBASE AUTH + FIRESTORE SERVICE ─────────────────────────────────────────
+class _AuthService {
+  static final _auth = FirebaseAuth.instance;
+  static final _db   = FirebaseFirestore.instance;
 
-  static Future<String> signUp({ // string required in input 
+  /// Creates a Firebase Auth user
+  static Future<void> signUp({
     required String fullName,
     required String email,
     required String nickname,
     required String password,
   }) async {
-    final url = Uri.parse('$_baseUrl/auth/signup');
-    final response = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json', 
-        'Accept':       'application/json', 
-      },
-      body: jsonEncode({
-        'fullName': fullName,
-        'email':    email,
-        'nickname': nickname,
-        'password': password,
-        'agreements': {
-          'eula':    true,
-          'terms':   true,
-          'privacy': true,
-        },
-      }),
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
     );
-    
-final body = jsonDecode(response.body) as Map<String, dynamic>; 
-if (response.statusCode == 200 || response.statusCode == 201) {  // 200 or 201 ("OK" or "Created")
-      return body['userId'] ?? 'unknown';
-    }
-    throw body['message'] ?? 'Sign up failed. Please try again.'; // server return if error
+
+    final uid = credential.user!.uid;
+    await credential.user!.updateDisplayName(fullName);
+    await _db.collection('users').doc(uid).set({
+      'uid':         uid,
+      'fullName':    fullName,
+      'username':    nickname,           // the @nickname shown in the app
+      'email':       email,
+      'photoURL':    '',                 // empty until they upload a photo
+      'bio':         '',
+      'isOnline':    true,
+      'createdAt':   FieldValue.serverTimestamp(),
+    });
   }
 }
 
+// ── SIGN UP SCREEN ─────────────────────────────────────────────────────────────
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key}); 
-  
+  const SignUpScreen({super.key});
+
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
 }
-class _SignUpScreenState extends State<SignUpScreen> {
 
-  final _nameCtrl  = TextEditingController();   // hold what the user typed in each field
+class _SignUpScreenState extends State<SignUpScreen> {
+  final _nameCtrl  = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _nickCtrl  = TextEditingController();
   final _passCtrl  = TextEditingController();
 
-  bool _showPass  = false; 
-  bool _isLoading = false; 
-  bool _eulaOk    = true;  
+  bool _showPass  = false;
+  bool _isLoading = false;
+  bool _eulaOk    = true;
   bool _termsOk   = true;
   bool _privacyOk = true;
 
-  String? _nameErr, _emailErr, _nickErr, _passErr; //Error messages the red thing
+  String? _nameErr, _emailErr, _nickErr, _passErr;
 
   @override
-  void dispose() { // clear if closed
+  void dispose() {
     _nameCtrl.dispose();
     _emailCtrl.dispose();
     _nickCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
   }
-// input requirements
+
   bool _validate() {
     setState(() {
       _nameErr  = _nameCtrl.text.trim().length < 2
@@ -105,53 +101,66 @@ class _SignUpScreenState extends State<SignUpScreen> {
         && _nickErr == null && _passErr == null;
   }
 
-  Future<void> _onSubmit() async { // create acc btn part
-    if (!_validate()) {     // checking if field are correct input
+  Future<void> _setRememberMe(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('remember_me', value);
+  }
+
+  Future<void> _onSubmit() async {
+    if (!_validate()) {
       _showToast('Almost there! Please fill in all required fields 🐾', isError: true);
       return;
     }
-    // checking if agree in legal agree
     if (!_eulaOk || !_termsOk || !_privacyOk) {
       _showToast('Please agree to all legal agreements.', isError: true);
       return;
     }
-    setState(() => _isLoading = true);// loading 
+
+    setState(() => _isLoading = true);
 
     try {
-      final userId = await _AuthService.signUp(  // sending data to server
+      await _AuthService.signUp(
         fullName: _nameCtrl.text.trim(),
         email:    _emailCtrl.text.trim().toLowerCase(),
         nickname: _nickCtrl.text.trim(),
         password: _passCtrl.text,
       );
-      // success/ accept
+
+      await _setRememberMe(true);
+
       if (mounted) {
-        _showToast('🐾 Welcome to furpals! (ID: $userId)');
+        _showToast('🐾 Welcome to FurPals, ${_nameCtrl.text.trim()}!');
         Navigator.of(context).pushReplacementNamed('/home');
       }
+    } on FirebaseAuthException catch (e) {
+      // Firebase gives specific error codes we can show clearly
+      final msg = switch (e.code) {
+        'email-already-in-use' => 'That email is already registered. Try logging in.',
+        'weak-password'        => 'Password is too weak. Use at least 8 characters.',
+        'invalid-email'        => 'Please enter a valid email address.',
+        _                      => e.message ?? 'Sign up failed. Please try again.',
+      };
+      if (mounted) _showToast(msg, isError: true);
     } catch (e) {
       if (mounted) _showToast(e.toString(), isError: true);
-      
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  //snack bar for accept or error message 
   void _showToast(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message,
-          style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
         backgroundColor: isError ? _C.error : _C.success,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(50)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
         margin: const EdgeInsets.all(16),
       ),
     );
   }
-  // legal agree frame content and function
+
   void _openLegal(String title, String content) {
     showModalBottomSheet(
       context: context,
@@ -160,7 +169,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       builder: (_) => _LegalModal(title: title, content: content),
     );
   }
-  @override // bg whole frame
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
@@ -193,27 +203,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildHeader() { // logo and title
+  Widget _buildHeader() {
     return Row(
       children: [
-        Image.asset(
-                    'assets/images/logo.png',
-                    width: 130,
-                    height: 130,
-        ),
+        Image.asset('assets/images/logo.png', width: 130, height: 130),
         const SizedBox(width: 15),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('furpals',
-                style: GoogleFonts.modak(
-                  fontSize: 50, color: const Color(0xFF4A3728),),),
+                  style: GoogleFonts.modak(fontSize: 50, color: const Color(0xFF4A3728))),
               Text(
                 'Enter your details below to create your account and get started',
                 style: GoogleFonts.josefinSans(
-                  fontSize: 13, fontWeight: FontWeight.w600,
-                  color: const Color(0xFF000000), height: 1.45),
+                    fontSize: 13, fontWeight: FontWeight.w600,
+                    color: const Color(0xFF000000), height: 1.45),
               ),
             ],
           ),
@@ -222,12 +227,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildFormCard() { // create acc content
+  Widget _buildFormCard() {
     return _Card(
       child: Column(
         children: [
           Text('Create Account',
-            style: GoogleFonts.josefinSans(fontSize: 24, fontWeight: FontWeight.w700, color: _C.dark, )),
+              style: GoogleFonts.josefinSans(
+                  fontSize: 24, fontWeight: FontWeight.w700, color: _C.dark)),
           const SizedBox(height: 15),
 
           _Field(
@@ -270,8 +276,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             isPassword: true,
             showEye: true,
             isVisible: _showPass,
-            onToggleVisibility: () =>
-                setState(() => _showPass = !_showPass),
+            onToggleVisibility: () => setState(() => _showPass = !_showPass),
             onChanged: (_) => setState(() => _passErr = null),
           ),
           const SizedBox(height: 30),
@@ -280,17 +285,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text('Already have an account? ',
-                style: GoogleFonts.nunito(
-                  fontSize: 14, fontWeight: FontWeight.w500,
-                  color: _C.grey)),
+                  style: GoogleFonts.nunito(
+                      fontSize: 14, fontWeight: FontWeight.w500, color: _C.grey)),
               GestureDetector(
-                onTap: () {
-                  Navigator.of(context).pushNamed('/login');
-                },
-                child: Text('LOG IN', // log in btn
-                  style: GoogleFonts.holtwoodOneSc(
-                    fontSize: 14, fontWeight: FontWeight.w900,
-                    color: _C.dark, letterSpacing: .5)),
+                onTap: () => Navigator.of(context).pushNamed('/login'),
+                child: Text('LOG IN',
+                    style: GoogleFonts.holtwoodOneSc(
+                        fontSize: 14, fontWeight: FontWeight.w900,
+                        color: _C.dark, letterSpacing: .5)),
               ),
             ],
           ),
@@ -299,20 +301,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildLegalCard() { // legal agree frame
+  Widget _buildLegalCard() {
     return _Card(
       child: Column(
         children: [
           Text('Legal Agreements',
-            style: GoogleFonts.josefinSans(fontSize: 22, fontWeight: FontWeight.w700, color: _C.dark)),
+              style: GoogleFonts.josefinSans(
+                  fontSize: 22, fontWeight: FontWeight.w700, color: _C.dark)),
           const SizedBox(height: 16),
 
           _LegalRow(
             checked: _eulaOk,
             onToggle: () => setState(() => _eulaOk = !_eulaOk),
             linkText: 'End User License Agreement (EULA)',
-            onLinkTap: () => _openLegal(
-              'End-user License Agreement', _eulaText),
+            onLinkTap: () => _openLegal('End-user License Agreement', _eulaText),
           ),
           const SizedBox(height: 14),
 
@@ -335,7 +337,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildCreateButton() { // create btn
+  Widget _buildCreateButton() {
     return GestureDetector(
       onTap: _isLoading ? null : _onSubmit,
       child: Container(
@@ -346,30 +348,26 @@ class _SignUpScreenState extends State<SignUpScreen> {
           borderRadius: BorderRadius.circular(50),
           border: Border.all(color: Colors.black, width: 2.5),
           boxShadow: const [
-            BoxShadow(
-              color: Colors.black,
-              offset: Offset(3, 3),
-              blurRadius: 0,
-            ),
+            BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
           ],
         ),
-        child: Center( 
+        child: Center(
           child: _isLoading
               ? const SizedBox(
                   width: 24, height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5, color: Colors.black54))
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.black54))
               : Text('CREATE ACCOUNT',
                   style: GoogleFonts.holtwoodOneSc(
-                    fontSize: 17, letterSpacing: 3, color: _C.dark)),
+                      fontSize: 17, letterSpacing: 3, color: _C.dark)),
         ),
       ),
     );
   }
 }
 
-class _Card extends StatelessWidget { // create acc frame
-  final Widget child; 
+// ── REUSABLE CARD ──────────────────────────────────────────────────────────────
+class _Card extends StatelessWidget {
+  final Widget child;
   const _Card({required this.child});
 
   @override
@@ -381,11 +379,7 @@ class _Card extends StatelessWidget { // create acc frame
         borderRadius: BorderRadius.circular(60),
         border: Border.all(color: Colors.black, width: 2.5),
         boxShadow: const [
-          BoxShadow(
-            color: Colors.black,
-            offset: Offset(3, 3),
-            blurRadius: 0,
-          ),
+          BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
         ],
       ),
       padding: const EdgeInsets.fromLTRB(22, 28, 22, 20),
@@ -394,6 +388,7 @@ class _Card extends StatelessWidget { // create acc frame
   }
 }
 
+// ── REUSABLE INPUT FIELD ──────────────────────────────────────────────────────
 class _Field extends StatelessWidget {
   final String label, hint;
   final IconData icon;
@@ -423,33 +418,27 @@ class _Field extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, 
-          style: GoogleFonts.baloo2(
-            fontSize: 15, fontWeight: FontWeight.w700,
-            color: const Color (0xFF4A3728)),),
+        Text(label,
+            style: GoogleFonts.baloo2(
+                fontSize: 15, fontWeight: FontWeight.w700,
+                color: const Color(0xFF4A3728))),
         const SizedBox(height: 6),
 
-        // input box
         Container(
           height: 54,
           decoration: BoxDecoration(
-            color: const Color (0xFFD6EBF0),
+            color: const Color(0xFFD6EBF0),
             borderRadius: BorderRadius.circular(50),
-            border: Border.all( // this thing show when error input
-              color: errorText != null ? _C.error : Colors.transparent,
-              width: 2,
-            ),
+            border: Border.all(
+                color: errorText != null ? _C.error : Colors.transparent,
+                width: 2),
           ),
           child: Row(
             children: [
-              // password icon
               Padding(
                 padding: const EdgeInsets.only(left: 16, right: 10),
-                child: Icon(icon, size: 22,
-                  color: const Color(0xFF444444)),
+                child: Icon(icon, size: 22, color: const Color(0xFF444444)),
               ),
-
-              // Text input 
               Expanded(
                 child: TextField(
                   controller: controller,
@@ -457,21 +446,18 @@ class _Field extends StatelessWidget {
                   obscureText: isPassword && !isVisible,
                   keyboardType: keyboardType,
                   style: GoogleFonts.nunito(
-                    fontSize: 15, fontWeight: FontWeight.w600,
-                    color: _C.dark),
+                      fontSize: 15, fontWeight: FontWeight.w600, color: _C.dark),
                   decoration: InputDecoration(
                     hintText: hint,
                     hintStyle: GoogleFonts.baloo2(
-                      fontSize: 15, fontWeight: FontWeight.w500,
-                      color: _C.grey),
-                    border: InputBorder.none, 
+                        fontSize: 15, fontWeight: FontWeight.w500, color: _C.grey),
+                    border: InputBorder.none,
                     isDense: true,
-                    contentPadding:
-                      const EdgeInsets.symmetric(vertical: 4),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
                   ),
                 ),
               ),
-              if (showEye)    // Eye icon 
+              if (showEye)
                 GestureDetector(
                   onTap: onToggleVisibility,
                   child: Padding(
@@ -487,15 +473,13 @@ class _Field extends StatelessWidget {
           ),
         ),
 
-        // Red error text below the field
         if (errorText != null) ...[
           const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.only(left: 14),
             child: Text(errorText!,
-              style: GoogleFonts.nunito(
-                fontSize: 12, fontWeight: FontWeight.w700,
-                color: _C.error)),
+                style: GoogleFonts.nunito(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: _C.error)),
           ),
         ],
       ],
@@ -503,6 +487,7 @@ class _Field extends StatelessWidget {
   }
 }
 
+// ── LEGAL ROW ─────────────────────────────────────────────────────────────────
 class _LegalRow extends StatelessWidget {
   final bool checked;
   final VoidCallback onToggle, onLinkTap;
@@ -516,13 +501,13 @@ class _LegalRow extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) { // legala agree content
+  Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onToggle, 
+      onTap: onToggle,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          AnimatedContainer( // black + checkmark 
+          AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             width: 36, height: 36,
             decoration: BoxDecoration(
@@ -531,29 +516,26 @@ class _LegalRow extends StatelessWidget {
               border: Border.all(color: _C.dark, width: 2.5),
             ),
             child: checked
-                ? const Icon(Icons.check,
-                    color: Colors.white, size: 20)
+                ? const Icon(Icons.check, color: Colors.white, size: 20)
                 : null,
           ),
-          const SizedBox(width: 14), // agree text with link
+          const SizedBox(width: 14),
           Expanded(
             child: RichText(
               text: TextSpan(
                 style: GoogleFonts.nunito(
-                  fontSize: 14, fontWeight: FontWeight.w600,
-                  color: const Color(0xFF333333)),
+                    fontSize: 14, fontWeight: FontWeight.w600,
+                    color: const Color(0xFF333333)),
                 children: [
                   const TextSpan(text: 'I agree to the '),
                   TextSpan(
                     text: linkText,
                     style: GoogleFonts.nunito(
-                      fontSize: 14, fontWeight: FontWeight.w700,
-                      color: _C.blue,
-                      decoration: TextDecoration.underline,
-                      decorationColor: _C.blue,
-                    ),
-                    recognizer: TapGestureRecognizer()
-                      ..onTap = onLinkTap,
+                        fontSize: 14, fontWeight: FontWeight.w700,
+                        color: _C.blue,
+                        decoration: TextDecoration.underline,
+                        decorationColor: _C.blue),
+                    recognizer: TapGestureRecognizer()..onTap = onLinkTap,
                   ),
                 ],
               ),
@@ -564,7 +546,8 @@ class _LegalRow extends StatelessWidget {
     );
   }
 }
-// frame for legal agree 
+
+// ── LEGAL MODAL ───────────────────────────────────────────────────────────────
 class _LegalModal extends StatelessWidget {
   final String title, content;
   const _LegalModal({required this.title, required this.content});
@@ -579,23 +562,17 @@ class _LegalModal extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Container(// White header with title
+          Container(
             padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
             decoration: const BoxDecoration(
               color: Colors.white,
-              border: Border(
-                bottom: BorderSide(
-                  color: Color(0xFFEEEEEE), width: 1.5)),
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(28)),
+              border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 1.5)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: Text(title,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.baloo2(
-                fontSize: 18, color: _C.dark)),
+                textAlign: TextAlign.center,
+                style: GoogleFonts.baloo2(fontSize: 18, color: _C.dark)),
           ),
-
-          // content frame
           Expanded(
             child: Container(
               color: _C.modalBg,
@@ -605,45 +582,34 @@ class _LegalModal extends StatelessWidget {
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18)),
                       padding: const EdgeInsets.all(18),
                       child: SingleChildScrollView(
                         child: Text(content,
-                          style: GoogleFonts.nunito(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w500,
-                            color: const Color(0xFF555555),
-                            height: 1.7)),
+                            style: GoogleFonts.nunito(
+                                fontSize: 13.5, fontWeight: FontWeight.w500,
+                                color: const Color(0xFF555555), height: 1.7)),
                       ),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // close btn
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(
-                      width: double.infinity,
-                      height: 50,
+                      width: double.infinity, height: 50,
                       decoration: BoxDecoration(
                         color: _C.btnClose,
                         borderRadius: BorderRadius.circular(50),
-                        border: Border.all(
-                          color: _C.dark, width: 2.5),
+                        border: Border.all(color: _C.dark, width: 2.5),
                         boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black,
-                            offset: Offset(2, 2),
-                            blurRadius: 0,
-                          ),
+                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
                         ],
                       ),
                       child: Center(
                         child: Text('CLOSE',
-                          style: GoogleFonts.baloo2(
-                            fontSize: 16, letterSpacing: 2,
-                            color: _C.dark)),
+                            style: GoogleFonts.baloo2(
+                                fontSize: 16, letterSpacing: 2, color: _C.dark)),
                       ),
                     ),
                   ),
@@ -657,6 +623,7 @@ class _LegalModal extends StatelessWidget {
   }
 }
 
+// ── LEGAL TEXT ─────────────────────────────────────────────────────────────────
 const _eulaText = '''
 1. Acceptance of Terms
 By creating an account on furpals, you agree to be bound by this End-User License Agreement. If you do not agree, please do not use the application.

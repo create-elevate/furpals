@@ -1,44 +1,155 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:furpals/NotificationScreen.dart';
 import 'package:furpals/calendar.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:furpals/lost&found.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player/video_player.dart';
+import 'package:video_compress/video_compress.dart';
+import 'package:gal/gal.dart';
 
 class FurPalsColors {
-  static const blush       = Color(0xFFF9C8D0);
-  static const peach       = Color(0xFFFFD9C0);
-  static const mint        = Color(0xFFC5EDD6);
-  static const lavender    = Color(0xFFDDD0F5);
-  static const butter      = Color(0xFFFFF3C4);
-  static const cream       = Color(0xFFFFF8F2);
-  static const warmWhite   = Color(0xFFFFFAF6);
-  static const textDark    = Color(0xFF4A3728); 
-  static const textMid     = Color(0xFF7A6055); 
-  static const textSoft    = Color(0x33000000); // d ko pa na aaayos yung sa nav icon teh lyka pero yan muna icon gamitin
-  static const pink        = Color(0xFFF4738A); 
-  static const pinkLight   = Color(0xFFFF9AB0);
-  static const green       = Color(0xFF5DB87A);
-  static const purple      = Color(0xFF8B6FD4);
-  static const shadow      = Color(0x20B47864);
-  static const creamwhite  = Color(0xFFF9E9D5);
-  static const blue        = Color(0xFF448AFF);
+  static const blush = Color(0xFFF9C8D0);
+  static const peach = Color(0xFFFFD9C0);
+  static const mint = Color(0xFFC5EDD6);
+  static const lavender = Color(0xFFDDD0F5);
+  static const butter = Color(0xFFFFF3C4);
+  static const cream = Color(0xFFFFF8F2);
+  static const warmWhite = Color(0xFFFFFAF6);
+  static const textDark = Color(0xFF4A3728);
+  static const textMid = Color(0xFF7A6055);
+  static const textSoft = Color(0x33000000);
+  static const pink = Color(0xFFF4738A);
+  static const pinkLight = Color(0xFFFF9AB0);
+  static const green = Color(0xFF5DB87A);
+  static const purple = Color(0xFF8B6FD4);
+  static const shadow = Color(0x20B47864);
+  static const creamwhite = Color(0xFFF9E9D5);
+  static const blue = Color(0xFF448AFF);
   static const onlineGreen = Color(0xFF4CAF50);
   static const offlineGray = Color(0xFFBDBDBD);
-  static const heartRed    = Color(0xFFE53935); 
-  static const black100    = Color(0xFF000000); 
+  static const heartRed = Color(0xFFE53935);
+  static const black100 = Color(0xFF000000);
 }
 
-// The background gradient 
 const appBackgroundGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  stops: [0.0, 0.5, 1.0], 
-  colors: [
-    Color(0xFFFCDDE8), 
-    Color(0xFFFFE8D2),
-    Color(0xFFD4F0E4), 
-  ],
+  stops: [0.0, 0.5, 1.0],
+  colors: [Color(0xFFFCDDE8), Color(0xFFFFE8D2), Color(0xFFD4F0E4)],
 );
+
+/// Returns the currently logged-in user's Firestore profile as a Map.
+/// Returns an empty map if something goes wrong.
+Future<Map<String, dynamic>> _getCurrentUserProfile() async {
+  try {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return {};
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
+    return doc.data() ?? {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/// Formats a Firestore Timestamp into a readable "HH:MM AM/PM" string.
+String _formatTime(Timestamp? ts) {
+  if (ts == null) return '';
+  final dt = ts.toDate().toLocal();
+  final h = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+  final m = dt.minute.toString().padLeft(2, '0');
+  final ap = dt.hour >= 12 ? 'PM' : 'AM';
+  return '$h:$m $ap';
+}
+
+/// Formats a Firestore Timestamp into "Month Day, Year".
+String _formatDate(Timestamp? ts) {
+  if (ts == null) return '';
+  final dt = ts.toDate().toLocal();
+  const months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+}
+
+/// Formats a large number like 130900 → "130.9K".
+String _formatCount(int n) {
+  if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+  if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+  return n.toString();
+}
+
+Future<void> _clearRememberMe() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('remember_me');
+}
+
+/// Saves the media (image or video) from the given URL to the device's gallery.
+Future<void> _saveMediaToGallery(String mediaURL, String mediaType) async {
+  try {
+    final response = await HttpClient().getUrl(Uri.parse(mediaURL));
+    final request = await response.close();
+    final bytes = await consolidateHttpClientResponseBytes(request);
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final ext = mediaType.contains('video') ? '.mp4' : '.png';
+    final tempPath = '${Directory.systemTemp.path}/furpals_$timestamp$ext';
+    final tempFile = File(tempPath);
+    await tempFile.writeAsBytes(bytes);
+    
+    if (mediaType.contains('video')) {
+      await Gal.putVideo(tempFile.path);
+    } else {
+      await Gal.putImage(tempFile.path);
+    }
+    print('Media saved to gallery successfully');
+    
+    await tempFile.delete();
+  } catch (e) {
+    print('Error saving media: $e');
+  }
+}
+
+/// Creates a notification document in Firestore.
+Future<void> _createNotification(String toUserId, String fromUserId, String type, String postId, {String? commentText}) async {
+  if (toUserId == fromUserId) return; // Don't notify self
+  final profile = await _getCurrentUserProfile();
+  final fromUsername = profile['username'] ?? '';
+  final fromFullName = profile['fullName'] ?? '';
+
+  await FirebaseFirestore.instance.collection('notifications').add({
+    'toUserId': toUserId,
+    'fromUserId': fromUserId,
+    'fromUsername': fromUsername,
+    'fromFullName': fromFullName,
+    'type': type, // 'like' or 'comment'
+    'postId': postId,
+    'commentText': commentText ?? '',
+    'isRead': false,
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+}
+
 
 class Homescreen extends StatelessWidget {
   const Homescreen({super.key});
@@ -52,7 +163,7 @@ class Homescreen extends StatelessWidget {
     );
   }
 }
-// main shell wrapper that holds the bottom nav bar and swaps screens
+
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
@@ -61,11 +172,9 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  // Tracks which tab the user is on 
   int _selectedNav = 1;
 
   void _onNavTap(int i) {
-    // post pop up
     if (i == 2) {
       showModalBottomSheet(
         context: context,
@@ -78,7 +187,6 @@ class _MainShellState extends State<MainShell> {
     setState(() => _selectedNav = i);
   }
 
-  // Returns the correct screen based on which tab is selected
   Widget _currentBody() {
     switch (_selectedNav) {
       case 0:
@@ -95,7 +203,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: const FurPalsDrawer(), // Side menu that slides in
+      drawer: const FurPalsDrawer(),
       bottomNavigationBar: _FlatBottomNav(
         selectedIndex: _selectedNav,
         onTap: _onNavTap,
@@ -105,7 +213,7 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-// btn navi designs
+//bottom nav bar
 class _FlatBottomNav extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onTap;
@@ -126,11 +234,15 @@ class _FlatBottomNav extends StatelessWidget {
     final double systemBottom = MediaQuery.of(context).padding.bottom;
 
     return Container(
-      decoration: const BoxDecoration( // navi box frame
+      decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
-          BoxShadow(color: FurPalsColors.shadow, blurRadius: 24, offset: Offset(0, -6)),
+          BoxShadow(
+            color: FurPalsColors.shadow,
+            blurRadius: 24,
+            offset: Offset(0, -6),
+          ),
         ],
       ),
       padding: EdgeInsets.fromLTRB(0, 10, 0, systemBottom + 10),
@@ -138,7 +250,7 @@ class _FlatBottomNav extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: List.generate(5, (i) {
-          final isPost   = i == 2;
+          final isPost = i == 2;
           final isActive = !isPost && i == selectedIndex;
 
           return Expanded(
@@ -152,40 +264,56 @@ class _FlatBottomNav extends StatelessWidget {
                     height: 40,
                     child: Center(
                       child: isPost
-                          // post btn
                           ? Container(
-                              width: 44, height: 44,
+                              width: 44,
+                              height: 44,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(14),
                                 gradient: const LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
-                                  colors: [FurPalsColors.pink, FurPalsColors.pinkLight], // btn add bg
+                                  colors: [
+                                    FurPalsColors.pink,
+                                    FurPalsColors.pinkLight,
+                                  ],
                                 ),
-                                boxShadow: const [ // add shadow
-                                  BoxShadow(color: Color(0x55F4738A), blurRadius: 14, offset: Offset(0, 4)),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x55F4738A),
+                                    blurRadius: 14,
+                                    offset: Offset(0, 4),
+                                  ),
                                 ],
-                              ), //add post
-                              child: const Icon(Icons.add_rounded, color: Colors.white, size: 26),
+                              ),
+                              child: const Icon(
+                                Icons.add_rounded,
+                                color: Colors.white,
+                                size: 26,
+                              ),
                             )
-                          // if not selected light penk
                           : AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
                               decoration: BoxDecoration(
-                                color: isActive ? FurPalsColors.blush : Colors.transparent,
+                                color: isActive
+                                    ? FurPalsColors.blush
+                                    : Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                _icons[i], size: 22,
-                                // if selcted it will turn to penk
-                                color: isActive ? FurPalsColors.pink : FurPalsColors.pink.withOpacity(0.4),
+                                _icons[i],
+                                size: 22,
+                                color: isActive
+                                    ? FurPalsColors.pink
+                                    : FurPalsColors.pink.withOpacity(0.4),
                               ),
                             ),
                     ),
                   ),
                   const SizedBox(height: 3),
-                  // bottom navi design 
                   Text(
                     _labels[i],
                     style: GoogleFonts.nunito(
@@ -193,7 +321,9 @@ class _FlatBottomNav extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       color: isPost
                           ? FurPalsColors.pink
-                          : isActive ? FurPalsColors.pink : FurPalsColors.textDark.withOpacity(0.4),
+                          : isActive
+                          ? FurPalsColors.pink
+                          : FurPalsColors.textDark.withOpacity(0.4),
                       letterSpacing: 0.2,
                     ),
                     textAlign: TextAlign.center,
@@ -208,7 +338,7 @@ class _FlatBottomNav extends StatelessWidget {
   }
 }
 
-// flyout box
+//username (firebase)
 class FurPalsDrawer extends StatelessWidget {
   const FurPalsDrawer({super.key});
 
@@ -225,137 +355,213 @@ class FurPalsDrawer extends StatelessWidget {
             end: Alignment.bottomCenter,
             stops: [0.0, 0.50, 0.84, 1.0],
             colors: [
-              Color(0xFFFDEBEC), 
-              Color(0xFFFDEBEC), 
-              Color(0xFFFFFFFF), 
-              Color(0xFFFFFFFF), 
+              Color(0xFFFDEBEC),
+              Color(0xFFFDEBEC),
+              Color(0xFFFFFFFF),
+              Color(0xFFFFFFFF),
             ],
           ),
           borderRadius: BorderRadius.only(
             topRight: Radius.circular(32),
             bottomRight: Radius.circular(32),
           ),
-          boxShadow: [BoxShadow(color: Color(0x25B47864), blurRadius: 32, offset: Offset(8, 0))],
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x25B47864),
+              blurRadius: 32,
+              offset: Offset(8, 0),
+            ),
+          ],
         ),
         child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 30 ),  // User profile section
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    // pofile flyout
-                    Container(
-                      width: 60,
-                      height: 60,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: [FurPalsColors.blush, FurPalsColors.peach],
-                        ),
-                      ),
-                      child: const Center(
-                        child: Text('🐾', style: TextStyle(fontSize: 30)),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Full Name', // profile flyout Name
-                          style: GoogleFonts.baloo2(
-                            fontSize: 25,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF4A3728), // profile flyout name color
-                            height: 1.1,
-                          ),
-                        ),
-                        Text(
-                          '@mickaluvsyou',
-                          style: GoogleFonts.nunito(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0x40000000), // username flyout
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ), // btn navigation flyout
-              const SizedBox(height: 30),
-              _pill(context, Icons.settings_rounded,     'Settings',       () => Navigator.pop(context)),
-              const SizedBox(height: 12),
-              _pill(context, Icons.bookmark_rounded,     'Saved Posts',    () => Navigator.pop(context)),
-              const SizedBox(height: 12),
-              _pill(context, Icons.info_outline_rounded, 'About',          () => Navigator.pop(context)),
-              const SizedBox(height: 12),
-              _pill(context, Icons.help_outline_rounded, 'Help & Support', () => Navigator.pop(context)),
-              const Spacer(),
-              // Log out button
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).pushNamed('/login'),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFDE0E6),
-                      borderRadius: BorderRadius.circular(50),
-                      border: Border.all(color: FurPalsColors.pinkLight.withOpacity(0.5), width: 1.5),
-                      boxShadow: const [BoxShadow(color: Color(0x20F4738A), blurRadius: 10, offset: Offset(0, 4))],
-                    ),
+          child: FutureBuilder<Map<String, dynamic>>(
+            // Reads the logged-in user's profile from Firestore
+            future: _getCurrentUserProfile(),
+            builder: (context, snapshot) {
+              final profile = snapshot.data ?? {};
+              final fullName = profile['fullName'] ?? 'FurPals User';
+              final username = profile['username'] ?? '';
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 30),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.logout_rounded, color: FurPalsColors.pink, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          'LOG OUT', // log out
-                          style: GoogleFonts.nunito(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                            color: FurPalsColors.pink,
-                            letterSpacing: 1.2,
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [
+                                FurPalsColors.blush,
+                                FurPalsColors.peach,
+                              ],
+                            ),
                           ),
+                          child: const Center(
+                            child: Text('🐾', style: TextStyle(fontSize: 30)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // REAL fullName from Firestore
+                            Text(
+                              fullName,
+                              style: GoogleFonts.baloo2(
+                                fontSize: 25,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF4A3728),
+                                height: 1.1,
+                              ),
+                            ),
+                            // REAL username from Firestore
+                            Text(
+                              '@$username',
+                              style: GoogleFonts.nunito(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0x40000000),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                ),
-              ),
-            ],
+                  const SizedBox(height: 30),
+                  _pill(
+                    context,
+                    Icons.settings_rounded,
+                    'Settings',
+                    () => Navigator.pop(context),
+                  ),
+                  const SizedBox(height: 12),
+                  _pill(
+                    context,
+                    Icons.bookmark_rounded,
+                    'Saved Posts',
+                    () => Navigator.pop(context),
+                  ),
+                  const SizedBox(height: 12),
+                  _pill(
+                    context,
+                    Icons.info_outline_rounded,
+                    'About',
+                    () => Navigator.pop(context),
+                  ),
+                  const SizedBox(height: 12),
+                  _pill(
+                    context,
+                    Icons.help_outline_rounded,
+                    'Help & Support',
+                    () => Navigator.pop(context),
+                  ),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+                    child: GestureDetector(
+                      onTap: () async {
+                        // Set isOnline = false before signing out
+                        final uid = FirebaseAuth.instance.currentUser?.uid;
+                        if (uid != null) {
+                          await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(uid)
+                              .update({'isOnline': false});
+                        }
+                        await FirebaseAuth.instance.signOut();
+                        await _clearRememberMe();
+                        if (context.mounted) {
+                          Navigator.of(context).pushReplacementNamed('/login');
+                        }
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFDE0E6),
+                          borderRadius: BorderRadius.circular(50),
+                          border: Border.all(
+                            color: FurPalsColors.pinkLight.withOpacity(0.5),
+                            width: 1.5,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x20F4738A),
+                              blurRadius: 10,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.logout_rounded,
+                              color: FurPalsColors.pink,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'LOG OUT',
+                              style: GoogleFonts.nunito(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                color: FurPalsColors.pink,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
     );
   }
 
-  Widget _pill(BuildContext context, IconData icon, String label, VoidCallback onTap) { // flyout design btns
+  Widget _pill(
+    BuildContext context,
+    IconData icon,
+    String label,
+    VoidCallback onTap,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
         onTap: onTap,
         child: Container(
           width: 350,
-          height: 50,// btn flyout size
+          height: 50,
           padding: const EdgeInsets.symmetric(horizontal: 20),
           decoration: BoxDecoration(
             color: const Color(0xFFFBEDE4),
             borderRadius: BorderRadius.circular(50),
-            boxShadow: const [BoxShadow(color: Colors.grey,blurRadius: 3, offset: Offset(0, 3))],
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.grey,
+                blurRadius: 3,
+                offset: Offset(0, 3),
+              ),
+            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              //icon flyout
               Icon(icon, size: 30, color: Colors.black),
               const SizedBox(width: 12),
-              Text( // flyout label
+              Text(
                 label,
                 style: GoogleFonts.baloo2(
                   fontSize: 15,
@@ -371,7 +577,17 @@ class FurPalsDrawer extends StatelessWidget {
   }
 }
 
-void _showPostOptionsMenu(BuildContext context, String username) {
+//user delete own post
+void _showPostOptionsMenu(
+  BuildContext context,
+  String username,
+  String postId,
+  String currentUid,
+  String postOwnerId,
+  String mediaURL,
+  String mediaType,
+) {
+  final isOwner = currentUid == postOwnerId;
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,
@@ -384,37 +600,55 @@ void _showPostOptionsMenu(BuildContext context, String username) {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle for the options modal
           Container(
-            width: 40, height: 4,
+            width: 40,
+            height: 4,
             decoration: BoxDecoration(
               color: FurPalsColors.blush,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 20),
-          // Save Post option button
           _PostOptionTile(
             icon: Icons.bookmark_add_rounded,
             iconColor: FurPalsColors.purple,
             iconBg: FurPalsColors.lavender,
             label: 'Save Post',
-            onTap: () {
+            onTap: () async {
               Navigator.pop(context);
-              // Show confirmation snackbar after saving
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Post saved!',
-                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-                  backgroundColor: FurPalsColors.purple,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              );
+              if (mediaURL.isNotEmpty) {
+                await _saveMediaToGallery(mediaURL, mediaType);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Media saved to gallery!',
+                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                    ),
+                    backgroundColor: FurPalsColors.green,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'No media to save.',
+                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                    ),
+                    backgroundColor: FurPalsColors.heartRed,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                );
+              }
             },
           ),
           const SizedBox(height: 12),
-          // Report Post option button
           _PostOptionTile(
             icon: Icons.flag_rounded,
             iconColor: FurPalsColors.heartRed,
@@ -422,10 +656,22 @@ void _showPostOptionsMenu(BuildContext context, String username) {
             label: 'Report Post',
             onTap: () {
               Navigator.pop(context);
-              // Show report confirmation dialog after tapping report
               _showReportDialog(context, username);
             },
           ),
+          if (isOwner) ...[
+            const SizedBox(height: 12),
+            _PostOptionTile(
+              icon: Icons.delete_rounded,
+              iconColor: FurPalsColors.heartRed,
+              iconBg: const Color(0xFFFFE4E4),
+              label: 'Delete Post',
+              onTap: () {
+                Navigator.pop(context);
+                _showDeleteConfirmation(context, postId);
+              },
+            ),
+          ],
           const SizedBox(height: 8),
         ],
       ),
@@ -433,11 +679,9 @@ void _showPostOptionsMenu(BuildContext context, String username) {
   );
 }
 
-// tile widget used inside the post options modal
 class _PostOptionTile extends StatelessWidget {
   final IconData icon;
-  final Color iconColor;
-  final Color iconBg;
+  final Color iconColor, iconBg;
   final String label;
   final VoidCallback onTap;
 
@@ -450,7 +694,7 @@ class _PostOptionTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) { // 3 dot selection frame
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -459,23 +703,34 @@ class _PostOptionTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 6, offset: Offset(0, 2))],
+          boxShadow: const [
+            BoxShadow(
+              color: FurPalsColors.shadow,
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           children: [
-            // 3dot menu in post card
             Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Icon(icon, color: iconColor, size: 20),
             ),
             const SizedBox(width: 14),
-            Text(label,
-                style: GoogleFonts.nunito(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: FurPalsColors.textDark,
-                )),
+            Text(
+              label,
+              style: GoogleFonts.nunito(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: FurPalsColors.textDark,
+              ),
+            ),
           ],
         ),
       ),
@@ -483,63 +738,150 @@ class _PostOptionTile extends StatelessWidget {
   }
 }
 
-// Report confirmation dialog 
 void _showReportDialog(BuildContext context, String username) {
   showDialog(
     context: context,
     builder: (_) => AlertDialog(
       backgroundColor: FurPalsColors.warmWhite,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Text('Report Post',
-          style: GoogleFonts.baloo2(
-            fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark,
-          )),
+      title: Text(
+        'Report Post',
+        style: GoogleFonts.baloo2(
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          color: FurPalsColors.textDark,
+        ),
+      ),
       content: Text(
         "Are you sure you want to report $username's post? We'll review it shortly.",
         style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid),
       ),
       actions: [
-        // Cancel btn
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text('Cancel',
-              style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
+          child: Text(
+            'Cancel',
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.w700,
+              color: FurPalsColors.textMid,
+            ),
+          ),
         ),
-        // Confirm btn
         TextButton(
           onPressed: () {
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Report submitted. Thank you!',
-                    style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                content: Text(
+                  'Report submitted. Thank you!',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                ),
                 backgroundColor: FurPalsColors.heartRed,
                 behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             );
           },
-          child: Text('Report',
-              style: GoogleFonts.nunito(fontWeight: FontWeight.w800, color: FurPalsColors.heartRed)),
+          child: Text(
+            'Report',
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.w800,
+              color: FurPalsColors.heartRed,
+            ),
+          ),
         ),
       ],
     ),
   );
 }
 
-void _showWhoLikedModal(BuildContext context, String likeCount) {
-  // Sample data like post
-  final likers = [
-    {'emoji': '🐱', 'name': 'luna.meows',    'display': 'Luna Cat'},
-    {'emoji': '🐶', 'name': 'buddydog',      'display': 'Buddy Boy'},
-    {'emoji': '🐰', 'name': 'cocorabbit',    'display': 'Coco Bunny'},
-    {'emoji': '🐾', 'name': 'mochipaws',     'display': 'Mochi'},
-    {'emoji': '🦮', 'name': 'daisywalks',    'display': 'Daisy Guide'},
-    {'emoji': '🐹', 'name': 'peanuthamster', 'display': 'Peanut Ham'},
-  ];
+void _showDeleteConfirmation(BuildContext context, String postId) {
+  showDialog(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: FurPalsColors.warmWhite,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text(
+        'Delete Post?',
+        style: GoogleFonts.baloo2(
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          color: FurPalsColors.textDark,
+        ),
+      ),
+      content: Text(
+        "This action can't be undone.",
+        style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: Text(
+            'Cancel',
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.w700,
+              color: FurPalsColors.textMid,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: () async {
+            Navigator.pop(dialogContext);
+            try {
+              await FirebaseFirestore.instance
+                  .collection('posts')
+                  .doc(postId)
+                  .delete();
 
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Post deleted. 🐾',
+                    style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                  ),
+                  backgroundColor: FurPalsColors.heartRed,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              );
+            } catch (e) {
+              print('Delete error: $e');
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Failed to delete post.',
+                    style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                  ),
+                  backgroundColor: FurPalsColors.heartRed,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              );
+            }
+          },
+          child: Text(
+            'Delete',
+            style: GoogleFonts.nunito(
+              fontWeight: FontWeight.w800,
+              color: FurPalsColors.heartRed,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+//show likesand comments //likeCount //commentCount
+void _showWhoLikedModal(BuildContext context, String postId, int likeCount) {
   showModalBottomSheet(
-    context: context, // modal sheet for likes list
+    context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (_) => DraggableScrollableSheet(
@@ -555,68 +897,132 @@ void _showWhoLikedModal(BuildContext context, String likeCount) {
           children: [
             const SizedBox(height: 12),
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
-                color: FurPalsColors.blush, borderRadius: BorderRadius.circular(2),
+                color: FurPalsColors.blush,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(height: 16),
-            // total likes
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  const Icon(Icons.favorite_rounded, color: FurPalsColors.heartRed, size: 20),
+                  const Icon(
+                    Icons.favorite_rounded,
+                    color: FurPalsColors.heartRed,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
-                  Text('$likeCount Likes',
-                      style: GoogleFonts.baloo2(
-                        fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark,
-                      )),
+                  Text(
+                    '${_formatCount(likeCount)} Likes',
+                    style: GoogleFonts.baloo2(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: FurPalsColors.textDark,
+                    ),
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
             const Divider(height: 1, color: Color(0xFFF0E4DC)),
-            // list of users who liked (scrooll function)
+            // Stream from Firestore: posts/{postId}/likes
             Expanded(
-              child: ListView.separated(
-                controller: scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                itemCount: likers.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 4),
-                itemBuilder: (_, i) {
-                  final user = likers[i];
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    // Avatar user (for testing only)
-                    leading: Container(
-                      width: 46, height: 46,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(colors: [FurPalsColors.blush, FurPalsColors.peach]),
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('posts')
+                    .doc(postId)
+                    .collection('likes')
+                    .orderBy('createdAt', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: FurPalsColors.pink,
                       ),
-                      child: Center(child: Text(user['emoji']!, style: const TextStyle(fontSize: 22))),
-                    ),
-                    title: Text(user['display']!,
-                        style: GoogleFonts.baloo2(
-                          fontSize: 14, fontWeight: FontWeight.w800, color: FurPalsColors.textDark,
-                        )),
-                    subtitle: Text('@${user['name']}',
+                    );
+                  }
+                  final likers = snapshot.data!.docs;
+                  if (likers.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No likes yet 🐾',
                         style: GoogleFonts.nunito(
-                          fontSize: 12, color: FurPalsColors.textMid, fontWeight: FontWeight.w600,
-                        )),
-                    // Follow btn
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: FurPalsColors.blush,
-                        borderRadius: BorderRadius.circular(20),
+                          color: FurPalsColors.textMid,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      child: Text('Follow',
-                          style: GoogleFonts.nunito(
-                            fontSize: 12, fontWeight: FontWeight.w800, color: FurPalsColors.pink,
-                          )),
+                    );
+                  }
+                  return ListView.separated(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
                     ),
+                    itemCount: likers.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 4),
+                    itemBuilder: (_, i) {
+                      final data = likers[i].data() as Map<String, dynamic>;
+                      final displayName = data['fullName'] ?? '';
+                      final uname = data['username'] ?? '';
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Container(
+                          width: 46,
+                          height: 46,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [
+                                FurPalsColors.blush,
+                                FurPalsColors.peach,
+                              ],
+                            ),
+                          ),
+                          child: const Center(
+                            child: Text('🐾', style: TextStyle(fontSize: 22)),
+                          ),
+                        ),
+                        title: Text(
+                          displayName,
+                          style: GoogleFonts.baloo2(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: FurPalsColors.textDark,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '@$uname',
+                          style: GoogleFonts.nunito(
+                            fontSize: 12,
+                            color: FurPalsColors.textMid,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: FurPalsColors.blush,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            'Follow',
+                            style: GoogleFonts.nunito(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: FurPalsColors.pink,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -627,23 +1033,41 @@ void _showWhoLikedModal(BuildContext context, String likeCount) {
     ),
   );
 }
-
-//comment list 
-void _showCommentsModal(BuildContext context, String commentCount) {
-  // Sample for comments data
-  final comments = [
-    {'emoji': '🐱', 'name': 'luna.meows',  'text': 'So cute!! 😍🐾',           'time': '2m'},
-    {'emoji': '🐶', 'name': 'buddydog',    'text': 'Best post ever 🐶❤️',       'time': '5m'},
-    {'emoji': '🐰', 'name': 'cocorabbit',  'text': 'Awww I love this so much!', 'time': '10m'},
-    {'emoji': '🐾', 'name': 'mochipaws',   'text': 'My heart 🥺💕',             'time': '15m'},
-    {'emoji': '🦮', 'name': 'daisywalks',  'text': 'Goals honestly 🌿',         'time': '20m'},
-  ];
-
-  showModalBottomSheet( // comment frame design
+void _showCommentsModal(BuildContext context, String postId, int commentCount) async {
+  final postDoc = await FirebaseFirestore.instance.collection('posts').doc(postId).get();
+  final postOwnerId = postDoc.data()?['userId'] ?? '';
+  showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => DraggableScrollableSheet(
+    builder: (_) => _CommentsModal(postId: postId, commentCount: commentCount, postOwnerId: postOwnerId),
+  );
+}
+
+class _CommentsModal extends StatefulWidget {
+  final String postId;
+  final int commentCount;
+  final String postOwnerId;
+
+  const _CommentsModal({required this.postId, required this.commentCount, required this.postOwnerId});
+
+  @override
+  State<_CommentsModal> createState() => _CommentsModalState();
+}
+
+class _CommentsModalState extends State<_CommentsModal> {
+  final TextEditingController _commentCtrl = TextEditingController();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
       initialChildSize: 0.65,
       maxChildSize: 0.92,
       minChildSize: 0.4,
@@ -656,138 +1080,279 @@ void _showCommentsModal(BuildContext context, String commentCount) {
           children: [
             const SizedBox(height: 12),
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
-                color: FurPalsColors.blush, borderRadius: BorderRadius.circular(2),
+                color: FurPalsColors.blush,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(height: 16),
-            // total comment
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  const Icon(Icons.chat_bubble_rounded, color: FurPalsColors.pink, size: 20),
+                  const Icon(
+                    Icons.chat_bubble_rounded,
+                    color: FurPalsColors.pink,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
-                  Text('$commentCount Comments',
-                      style: GoogleFonts.baloo2(
-                        fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark,
-                      )),
+                  Text(
+                    '${_formatCount(widget.commentCount)} Comments',
+                    style: GoogleFonts.baloo2(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: FurPalsColors.textDark,
+                    ),
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
             const Divider(height: 1, color: Color(0xFFF0E4DC)),
-            // list of comments
             Expanded(
-              child: ListView.separated(
-                controller: scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                itemCount: comments.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (_, i) {
-                  final c = comments[i];
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Commenter avatar 
-                      Container(
-                        width: 38, height: 38,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(colors: [FurPalsColors.mint, FurPalsColors.lavender]),
-                        ),
-                        child: Center(child: Text(c['emoji']!, style: const TextStyle(fontSize: 18))),
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('posts')
+                    .doc(widget.postId)
+                    .collection('comments')
+                    .orderBy('createdAt', descending: false)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: FurPalsColors.pink,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                    );
+                  }
+                  final comments = snapshot.data!.docs;
+                  if (comments.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'No comments yet. Be the first! 🐾',
+                        style: GoogleFonts.nunito(
+                          color: FurPalsColors.textMid,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                    itemCount: comments.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final c = comments[i].data() as Map<String, dynamic>;
+                      final uname = c['username'] ?? '';
+                      final text = c['text'] ?? '';
+                      final ts = c['createdAt'] as Timestamp?;
+                      final timeAgo = ts != null ? _timeAgo(ts.toDate()) : '';
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                colors: [
+                                  FurPalsColors.mint,
+                                  FurPalsColors.lavender,
+                                ],
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text('🐾', style: TextStyle(fontSize: 18)),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Commenter username
-                                Text('@${c['name']}',
+                                Row(
+                                  children: [
+                                    Text(
+                                      '@$uname',
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                        color: FurPalsColors.textDark,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      timeAgo,
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 10,
+                                        color: FurPalsColors.textMid,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: FurPalsColors.warmWhite,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    text,
                                     style: GoogleFonts.nunito(
-                                      fontSize: 12, fontWeight: FontWeight.w800, color: FurPalsColors.textDark,
-                                    )),
-                                const SizedBox(width: 6),
-                                // Time label in comment
-                                Text(c['time']!,
-                                    style: GoogleFonts.nunito(
-                                      fontSize: 10, color: FurPalsColors.textMid,
-                                    )),
+                                      fontSize: 13,
+                                      color: FurPalsColors.textDark,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 2),
-                            // Comment text bubble
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: FurPalsColors.warmWhite,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(c['text']!,
-                                  style: GoogleFonts.nunito(
-                                    fontSize: 13, color: FurPalsColors.textDark, fontWeight: FontWeight.w600,
-                                  )),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),
             ),
             const Divider(height: 1, color: Color(0xFFF0E4DC)),
-            // Comment input bar 
             Padding(
-              padding: EdgeInsets.fromLTRB(16, 10, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                10,
+                16,
+                MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
               child: Row(
                 children: [
-                  // Current user avatar beside input bar comment
                   Container(
-                    width: 36, height: 36,
+                    width: 36,
+                    height: 36,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(colors: [FurPalsColors.blush, FurPalsColors.peach]),
+                      gradient: LinearGradient(
+                        colors: [FurPalsColors.blush, FurPalsColors.peach],
+                      ),
                     ),
-                    child: const Center(child: Text('🐾', style: TextStyle(fontSize: 18))),
+                    child: const Center(
+                      child: Text('🐾', style: TextStyle(fontSize: 18)),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: FurPalsColors.warmWhite,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFF0E4DC), width: 1.5),
+                        border: Border.all(
+                          color: const Color(0xFFF0E4DC),
+                          width: 1.5,
+                        ),
                       ),
                       child: TextField(
+                        controller: _commentCtrl,
                         decoration: InputDecoration(
-                          hintText: 'Add a comment...', // comment input hint
+                          hintText: 'Add a comment...',
                           hintStyle: GoogleFonts.nunito(
-                            color: FurPalsColors.textSoft, fontSize: 13,
+                            color: FurPalsColors.textSoft,
+                            fontSize: 13,
                           ),
-                          border: InputBorder.none, isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                          ),
                         ),
                         style: GoogleFonts.nunito(
-                          fontSize: 13, color: FurPalsColors.black100, fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: FurPalsColors.black100,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Send button for the comment 
-                  Container(
-                    width: 38, height: 38,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [FurPalsColors.pink, FurPalsColors.pinkLight]),
-                      borderRadius: BorderRadius.circular(12),
+                  GestureDetector(
+                    onTap: _sending
+                        ? null
+                        : () async {
+                            final text = _commentCtrl.text.trim();
+                            if (text.isEmpty) return;
+                            setState(() => _sending = true);
+                            try {
+                              final profile = await _getCurrentUserProfile();
+                              final uid =
+                                  FirebaseAuth.instance.currentUser?.uid ?? '';
+                              final uname = profile['username'] ?? '';
+                              final fullName = profile['fullName'] ?? '';
+                              final ref = FirebaseFirestore.instance
+                                  .collection('posts')
+                                  .doc(widget.postId)
+                                  .collection('comments')
+                                  .doc();
+
+                              await ref.set({
+                                'commentId': ref.id,
+                                'userId': uid,
+                                'username': uname,
+                                'fullName': fullName,
+                                'text': text,
+                                'createdAt': FieldValue.serverTimestamp(),
+                              });
+
+                              await FirebaseFirestore.instance
+                                  .collection('posts')
+                                  .doc(widget.postId)
+                                  .update({
+                                    'commentCount': FieldValue.increment(1),
+                                  });
+
+                              await _createNotification(widget.postOwnerId, uid, 'comment', widget.postId, commentText: text);
+
+                              _commentCtrl.clear();
+                            } catch (_) {
+                              // ignore error or show message
+                            }
+                            setState(() => _sending = false);
+                          },
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [FurPalsColors.pink, FurPalsColors.pinkLight],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: _sending
+                          ? const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.send_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                     ),
-                    child: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
                   ),
                 ],
               ),
@@ -795,10 +1360,21 @@ void _showCommentsModal(BuildContext context, String commentCount) {
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }
-// share frame
+
+/// Returns a human-readable time ago string like "2m", "3h", "1d"
+String _timeAgo(DateTime dt) {
+  final diff = DateTime.now().difference(dt);
+  if (diff.inMinutes < 1) return 'now';
+  if (diff.inHours < 1) return '${diff.inMinutes}m';
+  if (diff.inDays < 1) return '${diff.inHours}h';
+  return '${diff.inDays}d';
+}
+
+
+//share button
 void _showShareModal(BuildContext context, String username) {
   showModalBottomSheet(
     context: context,
@@ -807,41 +1383,77 @@ void _showShareModal(BuildContext context, String username) {
     builder: (_) => _ShareFullSheet(username: username),
   );
 }
+
 class _ShareFullSheet extends StatefulWidget {
   final String username;
   const _ShareFullSheet({required this.username});
-  
+
   @override
   State<_ShareFullSheet> createState() => _ShareFullSheetState();
 }
 
 class _ShareFullSheetState extends State<_ShareFullSheet> {
-  // selected audience 
   String _audience = 'Feed';
-  // selected privacy 
-  String _privacy  = 'Only me';
+  String _privacy = 'Only me';
 
-  // Audience options 
   static const _audienceOptions = ['Feed', 'Friends', 'Public'];
-  // Privacy options 
-  static const _privacyOptions  = ['Only me', 'Friends', 'Everyone'];
+  static const _privacyOptions = ['Only me', 'Friends', 'Everyone'];
 
- final List<Map<String, dynamic>> _platforms = [ // icon share icons
-  // Row 1
-  {'label': 'WhatsApp',  'color': const Color(0xFF93E67F), 'icon': Icons.chat_rounded},
-  {'label': 'Messenger', 'color': const Color(0xFF1163EC), 'icon': Icons.send_rounded},
-  {'label': 'Facebook',  'color': const Color(0xFF1877F2), 'icon': Icons.facebook_sharp},
-  {'label': 'Threads',   'color': const Color(0xFF000000), 'icon': Icons.alternate_email_rounded},
-  {'label': 'X',         'color': const Color(0xFF000000), 'icon': Icons.close_rounded},
-  // Row 2
-  {'label': 'Instagram', 'color': const Color(0xFFF4738A), 'icon': Icons.camera_alt_rounded},
-  {'label': 'IG Story',  'color': const Color(0xFFF4738A), 'icon': Icons.add_circle_outline},
-  {'label': 'Copy Link', 'color': const Color(0xFFBBB2CF), 'icon': Icons.link_rounded},
-  {'label': 'SMS',       'color': const Color(0xFFD4F0E4), 'icon': Icons.sms_rounded},
-  {'label': 'Email',     'color': const Color(0xFFFF383C), 'icon': Icons.email_rounded},
-];
+  final List<Map<String, dynamic>> _platforms = [
+    {
+      'label': 'WhatsApp',
+      'color': const Color(0xFF93E67F),
+      'icon': Icons.chat_rounded,
+    },
+    {
+      'label': 'Messenger',
+      'color': const Color(0xFF1163EC),
+      'icon': Icons.send_rounded,
+    },
+    {
+      'label': 'Facebook',
+      'color': const Color(0xFF1877F2),
+      'icon': Icons.facebook_sharp,
+    },
+    {
+      'label': 'Threads',
+      'color': const Color(0xFF000000),
+      'icon': Icons.alternate_email_rounded,
+    },
+    {
+      'label': 'X',
+      'color': const Color(0xFF000000),
+      'icon': Icons.close_rounded,
+    },
+    {
+      'label': 'Instagram',
+      'color': const Color(0xFFF4738A),
+      'icon': Icons.camera_alt_rounded,
+    },
+    {
+      'label': 'IG Story',
+      'color': const Color(0xFFF4738A),
+      'icon': Icons.add_circle_outline,
+    },
+    {
+      'label': 'Copy Link',
+      'color': const Color(0xFFBBB2CF),
+      'icon': Icons.link_rounded,
+    },
+    {
+      'label': 'SMS',
+      'color': const Color(0xFFD4F0E4),
+      'icon': Icons.sms_rounded,
+    },
+    {
+      'label': 'Email',
+      'color': const Color(0xFFFF383C),
+      'icon': Icons.email_rounded,
+    },
+  ];
+
   @override
-  Widget build(BuildContext context) { // share frame design
+  Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.62,
       decoration: const BoxDecoration(
@@ -854,42 +1466,48 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
           const SizedBox(height: 12),
           Center(
             child: Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                 color: FurPalsColors.blush,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
-          const SizedBox(height: 14), // whole content height
+          const SizedBox(height: 14),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                Container( // avatar user
-                  width: 44, height: 44,
+                Container(
+                  width: 44,
+                  height: 44,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
                       colors: [FurPalsColors.blush, FurPalsColors.peach],
                     ),
                   ),
-                  child: const Center(child: Text('🐾', style: TextStyle(fontSize: 22))),
+                  child: const Center(
+                    child: Text('🐾', style: TextStyle(fontSize: 22)),
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Mickaluvsyou', // username
+                      widget.username,
                       style: GoogleFonts.baloo2(
-                        fontSize: 15, fontWeight: FontWeight.w800, color: FurPalsColors.textDark,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: FurPalsColors.textDark,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        _ShareDropdownPill( // the options fuctions
+                        _ShareDropdownPill(
                           value: _audience,
                           options: _audienceOptions,
                           icon: Icons.public_rounded,
@@ -909,29 +1527,28 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
               ],
             ),
           ),
-
           const SizedBox(height: 30),
-
-          //Say something... Caption
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1),
             child: TextField(
               maxLines: 2,
               style: GoogleFonts.nunito(
-                fontSize: 14, color: FurPalsColors.textDark, fontWeight: FontWeight.w500,
+                fontSize: 14,
+                color: FurPalsColors.textDark,
+                fontWeight: FontWeight.w500,
               ),
               decoration: InputDecoration(
                 hintText: 'Say something...',
                 hintStyle: GoogleFonts.nunito(
-                  fontSize: 14, color: FurPalsColors.textSoft, fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                  color: FurPalsColors.textSoft,
+                  fontWeight: FontWeight.w500,
                 ),
                 border: InputBorder.none,
                 isDense: true,
               ),
             ),
           ),
-
-          // snack bar post shared
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
             child: Align(
@@ -941,16 +1558,23 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Post shared! 🐾',
-                          style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                      content: Text(
+                        'Post shared! 🐾',
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                      ),
                       backgroundColor: FurPalsColors.blue,
                       behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   );
                 },
-                child: Container( // share now btn
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: FurPalsColors.blue,
                     borderRadius: BorderRadius.circular(8),
@@ -958,89 +1582,97 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
                   child: Text(
                     'Share now',
                     style: GoogleFonts.nunito(
-                      fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
                     ),
                   ),
                 ),
               ),
             ),
           ),
-
           const Divider(height: 1, color: Color(0xFFF0E4DC)),
-          const SizedBox(height: 15), // line devider share part
-
-          Padding(  
+          const SizedBox(height: 15),
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
               children: [
-                _buildPlatformRow(context, _platforms.sublist(0, 5)), // first row
+                _buildPlatformRow(context, _platforms.sublist(0, 5)),
                 const SizedBox(height: 16),
-                _buildPlatformRow(context, _platforms.sublist(5)),// 2nd row
+                _buildPlatformRow(context, _platforms.sublist(5)),
               ],
             ),
           ),
-
-          const SizedBox(height: 30),
         ],
       ),
     );
   }
 
-Widget _buildPlatformRow(BuildContext context, List<Map<String, dynamic>> row) { // icon share design
-  return Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: row.map((p) {
-      final label = p['label'] as String;
-      final color = p['color'] as Color;
-      final icon  = p['icon']  as IconData;
-      final iconColor = (label == 'SMS') ? FurPalsColors.green : Colors.white;
+  Widget _buildPlatformRow(
+    BuildContext context,
+    List<Map<String, dynamic>> row,
+  ) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: row.map((p) {
+        final label = p['label'] as String;
+        final color = p['color'] as Color;
+        final icon = p['icon'] as IconData;
+        final iconColor = (label == 'SMS') ? FurPalsColors.green : Colors.white;
 
-      return GestureDetector(
-        onTap: () {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar( // snackbar share
-            SnackBar(
-              content: Text('Sharing via $label...',
-                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-              backgroundColor: color,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        return GestureDetector(
+          onTap: () {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Sharing via $label...',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                ),
+                backgroundColor: color,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            );
+          },
+          child: SizedBox(
+            width: 58,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: iconColor, size: 30),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  label,
+                  style: GoogleFonts.nunito(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: FurPalsColors.textDark,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-          );
-        },
-        child: SizedBox( // circle share icon and text
-          width: 58, 
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: iconColor, size: 30),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                label,
-                style: GoogleFonts.nunito(
-                  fontSize: 10, fontWeight: FontWeight.w700, color: FurPalsColors.textDark,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
           ),
-        ),
-      );
-    }).toList(),
-  );
+        );
+      }).toList(),
+    );
+  }
 }
-}
-class _ShareDropdownPill extends StatelessWidget { // Dropdown feed and and only me part
+
+class _ShareDropdownPill extends StatelessWidget {
   final String value;
   final List<String> options;
   final IconData icon;
@@ -1057,22 +1689,35 @@ class _ShareDropdownPill extends StatelessWidget { // Dropdown feed and and only
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () async {
-        final RenderBox box = context.findRenderObject() as RenderBox; // only me dropdown design
+        final RenderBox box = context.findRenderObject() as RenderBox;
         final Offset offset = box.localToGlobal(Offset.zero);
         final picked = await showMenu<String>(
           context: context,
           color: FurPalsColors.warmWhite,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          position: RelativeRect.fromLTRB(
-            offset.dx, offset.dy + box.size.height + 4, offset.dx + 120, 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-          items: options.map((o) => PopupMenuItem(
-            value: o,
-            child: Text(o,
-                style: GoogleFonts.nunito(
-                  fontSize: 13, fontWeight: FontWeight.w700, color: FurPalsColors.textDark,
-                )),
-          )).toList(),
+          position: RelativeRect.fromLTRB(
+            offset.dx,
+            offset.dy + box.size.height + 4,
+            offset.dx + 120,
+            0,
+          ),
+          items: options
+              .map(
+                (o) => PopupMenuItem(
+                  value: o,
+                  child: Text(
+                    o,
+                    style: GoogleFonts.nunito(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: FurPalsColors.textDark,
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
         );
         if (picked != null) onChanged(picked);
       },
@@ -1080,7 +1725,7 @@ class _ShareDropdownPill extends StatelessWidget { // Dropdown feed and and only
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: FurPalsColors.creamwhite,
-          borderRadius: BorderRadius.circular(6), // Feed dropdown design
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(color: const Color(0xFFF0E4DC), width: 1),
         ),
         child: Row(
@@ -1088,12 +1733,20 @@ class _ShareDropdownPill extends StatelessWidget { // Dropdown feed and and only
           children: [
             Icon(icon, size: 12, color: FurPalsColors.textMid),
             const SizedBox(width: 4),
-            Text(value,
-                style: GoogleFonts.nunito(
-                  fontSize: 12, fontWeight: FontWeight.w700, color: FurPalsColors.textDark,
-                )),
+            Text(
+              value,
+              style: GoogleFonts.nunito(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: FurPalsColors.textDark,
+              ),
+            ),
             const SizedBox(width: 3),
-            const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: FurPalsColors.textMid),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 14,
+              color: FurPalsColors.textMid,
+            ),
           ],
         ),
       ),
@@ -1101,10 +1754,11 @@ class _ShareDropdownPill extends StatelessWidget { // Dropdown feed and and only
   }
 }
 
-// main feed
+
+
+//posts 
 class HomeBody extends StatefulWidget {
   final ValueChanged<int> onNavTap;
-
   const HomeBody({super.key, required this.onNavTap});
 
   @override
@@ -1114,41 +1768,19 @@ class HomeBody extends StatefulWidget {
 class _HomeBodyState extends State<HomeBody> {
   bool _hasNewNotif = true;
 
-  // sample profile list
+  // Active users still static for now (requires a followers system)
   final List<Map<String, dynamic>> _activeUsers = [
-    {'emoji': '🐶', 'label': 'Buddy',  'online': true},
-    {'emoji': '🐱', 'label': 'Luna',   'online': true},
-    {'emoji': '🐰', 'label': 'Coco',   'online': false},
-    {'emoji': '🐾', 'label': 'Mochi',  'online': true},
-    {'emoji': '🦮', 'label': 'Daisy',  'online': false},
+    {'emoji': '🐶', 'label': 'Buddy', 'online': true},
+    {'emoji': '🐱', 'label': 'Luna', 'online': true},
+    {'emoji': '🐰', 'label': 'Coco', 'online': false},
+    {'emoji': '🐾', 'label': 'Mochi', 'online': true},
+    {'emoji': '🦮', 'label': 'Daisy', 'online': false},
     {'emoji': '🐹', 'label': 'Peanut', 'online': true},
   ];
 
-  // Sample posts shown in the feed
-  final List<Map<String, dynamic>> _posts = [
-    {
-      'username': 'PetName', 'breed': 'Scottish Fold', 'emoji': '🐱',
-      'bgStart': FurPalsColors.blush, 'bgEnd': FurPalsColors.peach,
-      'likes': '130.9K', 'comments': '10K', 'shares': '5.5K',
-      'caption': 'Cute 🩷', 'time': '4:10 AM', 'date': 'March 5, 2026',
-      'avatarBg1': FurPalsColors.blush, 'avatarBg2': FurPalsColors.peach,
-      'online': true,
-    },
-    {
-      'username': 'fluffybuddyy', 'breed': 'Golden Retriever', 'emoji': '🐶',
-      'bgStart': FurPalsColors.mint, 'bgEnd': FurPalsColors.butter,
-      'likes': '8.1K', 'comments': '3.4K', 'shares': '1.2K',
-      'caption': 'Morning zoomies! 🌿✨', 'time': '7:32 AM', 'date': 'March 5, 2026',
-      'avatarBg1': FurPalsColors.mint, 'avatarBg2': FurPalsColors.lavender,
-      'online': false,
-    },
-  ];
-  String _s(Map<String, dynamic> m, String k) => (m[k] ?? '') as String;
-  Color  _c(Map<String, dynamic> m, String k, Color fb) => m.containsKey(k) ? m[k] as Color : fb;
-
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(  // bg 
+    return DecoratedBox(
       decoration: const BoxDecoration(gradient: appBackgroundGradient),
       child: SafeArea(
         bottom: false,
@@ -1157,7 +1789,9 @@ class _HomeBodyState extends State<HomeBody> {
             _buildTopBar(context),
             Expanded(
               child: DecoratedBox(
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.45)),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.45),
+                ),
                 child: Column(
                   children: [
                     _buildActiveUsersRow(),
@@ -1173,7 +1807,11 @@ class _HomeBodyState extends State<HomeBody> {
     );
   }
 
-  Widget _buildTopBar(BuildContext context) { // menu icon
+  // Top bar now reads the real username from Firebase Auth / Firestore
+  Widget _buildTopBar(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final displayName = user?.displayName ?? 'FurPals User';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
@@ -1182,13 +1820,26 @@ class _HomeBodyState extends State<HomeBody> {
             builder: (ctx) => GestureDetector(
               onTap: () => Scaffold.of(ctx).openDrawer(),
               child: Container(
-                width: 40, height: 40,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 10, offset: Offset(0, 3))],
+                  boxShadow: const [
+                    BoxShadow(
+                      color: FurPalsColors.shadow,
+                      blurRadius: 10,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
                 ),
-                child: const Center(child: Icon(Icons.menu_rounded, size: 20, color: FurPalsColors.textDark)),
+                child: const Center(
+                  child: Icon(
+                    Icons.menu_rounded,
+                    size: 20,
+                    color: FurPalsColors.textDark,
+                  ),
+                ),
               ),
             ),
           ),
@@ -1196,12 +1847,15 @@ class _HomeBodyState extends State<HomeBody> {
           Expanded(
             child: Row(
               children: [
-                Text('Mickaluvsyou', // username display in top bar
-                    style: GoogleFonts.baloo2(
-                      fontSize: 25,
-                      fontWeight: FontWeight.w800,
-                      color: FurPalsColors.textDark,
-                    )),
+                // Real display name from Firebase Auth
+                Text(
+                  displayName,
+                  style: GoogleFonts.baloo2(
+                    fontSize: 25,
+                    fontWeight: FontWeight.w800,
+                    color: FurPalsColors.textDark,
+                  ),
+                ),
                 const SizedBox(width: 10),
                 const Text('🐾', style: TextStyle(fontSize: 18)),
               ],
@@ -1209,7 +1863,7 @@ class _HomeBodyState extends State<HomeBody> {
           ),
           GestureDetector(
             onTap: () async {
-              setState(() => _hasNewNotif = false); // clear red dot
+              setState(() => _hasNewNotif = false);
               await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const NotificationScreen()),
@@ -1219,26 +1873,45 @@ class _HomeBodyState extends State<HomeBody> {
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration( // notif icon
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
                     color: FurPalsColors.warmWhite,
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: const [BoxShadow(color: Color(0x40F4738A), blurRadius: 12, offset: Offset(0, 4))],
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x40F4738A),
+                        blurRadius: 12,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: const Center(
-                    child: Icon(Icons.favorite_rounded, color: FurPalsColors.heartRed, size: 20),
+                    child: Icon(
+                      Icons.favorite_rounded,
+                      color: FurPalsColors.heartRed,
+                      size: 20,
+                    ),
                   ),
                 ),
                 if (_hasNewNotif)
-                  Positioned( // notfi red notice
-                    top: -3, right: -3,
+                  Positioned(
+                    top: -3,
+                    right: -3,
                     child: Container(
-                      width: 12, height: 12,
+                      width: 12,
+                      height: 12,
                       decoration: BoxDecoration(
                         color: FurPalsColors.heartRed,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: const [BoxShadow(color: Color(0x55E53935), blurRadius: 4, offset: Offset(0, 1))],
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x55E53935),
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1250,72 +1923,83 @@ class _HomeBodyState extends State<HomeBody> {
     );
   }
 
-  Widget _buildActiveUsersRow() { // profile list 
+  Widget _buildActiveUsersRow() {
     return SizedBox(
       height: 100,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         itemCount: _activeUsers.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (_, i) => _buildUserAvatar(_activeUsers[i]),
       ),
     );
   }
 
   Widget _buildUserAvatar(Map<String, dynamic> user) {
-    final bool   online = user['online'] as bool;
-    final String emoji  = user['emoji']  as String;
-    final String label  = user['label']  as String;
+    final bool online = user['online'] as bool;
+    final String emoji = user['emoji'] as String;
+    final String label = user['label'] as String;
 
     return SizedBox(
-      width: 64, // active status
+      width: 64,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 56, height: 56,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: online ? FurPalsColors.onlineGreen : FurPalsColors.offlineGray,
+              color: online
+                  ? FurPalsColors.onlineGreen
+                  : FurPalsColors.offlineGray,
               boxShadow: [
                 BoxShadow(
                   color: online
                       ? FurPalsColors.onlineGreen.withOpacity(0.28)
                       : FurPalsColors.offlineGray.withOpacity(0.18),
-                  blurRadius: 8, offset: const Offset(0, 2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
             padding: const EdgeInsets.all(3),
             child: Container(
-              decoration: BoxDecoration( // profile avatar design
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
-                  begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                   colors: online
                       ? [FurPalsColors.blush, FurPalsColors.peach]
                       : [FurPalsColors.cream, FurPalsColors.warmWhite],
                 ),
               ),
-              child: Center(child: Text(emoji, style: const TextStyle(fontSize: 24))),
+              child: Center(
+                child: Text(emoji, style: const TextStyle(fontSize: 24)),
+              ),
             ),
           ),
           const SizedBox(height: 4),
-          Text(label,
-              style: GoogleFonts.nunito(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: online ? FurPalsColors.textMid : FurPalsColors.textSoft,
-              ),
-              overflow: TextOverflow.ellipsis, maxLines: 1, textAlign: TextAlign.center),
+          Text(
+            label,
+            style: GoogleFonts.nunito(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: online ? FurPalsColors.textMid : FurPalsColors.textSoft,
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSearchBar() { // search bar
+  Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
       child: Container(
@@ -1323,12 +2007,22 @@ class _HomeBodyState extends State<HomeBody> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: const Color(0xFFF0E4DC), width: 1.5),
-          boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 4, offset: Offset(0, 3))],
+          boxShadow: const [
+            BoxShadow(
+              color: FurPalsColors.shadow,
+              blurRadius: 4,
+              offset: Offset(0, 3),
+            ),
+          ],
         ),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         child: Row(
           children: [
-            const Icon(Icons.search_sharp, color: FurPalsColors.textSoft, size: 30),
+            const Icon(
+              Icons.search_sharp,
+              color: FurPalsColors.textSoft,
+              size: 30,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: TextField(
@@ -1339,7 +2033,8 @@ class _HomeBodyState extends State<HomeBody> {
                     fontWeight: FontWeight.w500,
                     fontSize: 13,
                   ),
-                  border: InputBorder.none, isDense: true,
+                  border: InputBorder.none,
+                  isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
                 style: GoogleFonts.nunito(
@@ -1355,59 +2050,121 @@ class _HomeBodyState extends State<HomeBody> {
     );
   }
 
-  Widget _buildFeed() { // feed section
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-      itemCount: _posts.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 14),
-      itemBuilder: (_, i) => _buildPostCard(_posts[i]),
+  // REAL feed from Firestore — streams live updates
+  Widget _buildFeed() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('posts')
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: FurPalsColors.pink),
+          );
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('🐾', style: TextStyle(fontSize: 64)),
+                const SizedBox(height: 16),
+                Text(
+                  'No posts yet!',
+                  style: GoogleFonts.baloo2(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: FurPalsColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Be the first to share something',
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    color: FurPalsColors.textMid,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final posts = snapshot.data!.docs;
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          itemCount: posts.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 14),
+          itemBuilder: (_, i) {
+            final data = posts[i].data() as Map<String, dynamic>;
+            return _buildPostCard(data, posts[i].id);
+          },
+        );
+      },
     );
   }
 
-  Widget _buildPostCard(Map<String, dynamic> post) { // post card string
-    final username = _s(post, 'username');
-    final breed    = _s(post, 'breed');
-    final emoji    = _s(post, 'emoji');
-    final likes    = _s(post, 'likes');
-    final comments = _s(post, 'comments');
-    final shares   = _s(post, 'shares');
-    final caption  = _s(post, 'caption');
-    final time     = _s(post, 'time');
-    final date     = _s(post, 'date');
-    final bgStart  = _c(post, 'bgStart',   FurPalsColors.blush);
-    final bgEnd    = _c(post, 'bgEnd',     FurPalsColors.peach);
-    final av1      = _c(post, 'avatarBg1', FurPalsColors.blush);
-    final av2      = _c(post, 'avatarBg2', FurPalsColors.peach);
-    final bool online = (post['online'] as bool?) ?? false;
+  Widget _buildPostCard(Map<String, dynamic> post, String postId) {
+    final username = post['username'] as String? ?? '';
+    final fullName = post['fullName'] as String? ?? username;
+    final description = post['description'] as String? ?? '';
+    final mediaURL = post['mediaURL'] as String? ?? '';
+    final mediaType = post['mediaType'] as String? ?? 'none';
+    final location = post['location'] as String? ?? '';
+    final likeCount = (post['likeCount'] as num?)?.toInt() ?? 0;
+    final commentCount = (post['commentCount'] as num?)?.toInt() ?? 0;
+    final createdAt = post['createdAt'] as Timestamp?;
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
-    return Container( // post card design
+    // Gradient colors for the post image placeholder (cycle through app palette)
+    final colorPairs = [
+      [FurPalsColors.blush, FurPalsColors.peach],
+      [FurPalsColors.mint, FurPalsColors.butter],
+      [FurPalsColors.lavender, FurPalsColors.blush],
+      [FurPalsColors.peach, FurPalsColors.mint],
+    ];
+    final pair = colorPairs[postId.hashCode.abs() % colorPairs.length];
+
+    return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [BoxShadow(color: FurPalsColors.textSoft, blurRadius: 2, offset: Offset(0, 4))],
+        boxShadow: const [
+          BoxShadow(
+            color: FurPalsColors.textSoft,
+            blurRadius: 2,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       clipBehavior: Clip.hardEdge,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ── Header: avatar + name + 3-dot menu ──
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
             child: Row(
               children: [
                 Container(
-                  width: 46, height: 46,
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: online ? FurPalsColors.onlineGreen : FurPalsColors.offlineGray,
+                    color: FurPalsColors.onlineGreen,
                   ),
                   padding: const EdgeInsets.all(2.5),
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(colors: [av1, av2]),
+                      gradient: LinearGradient(colors: [pair[0], pair[1]]),
                     ),
-                    child: Center(child: Text(emoji, style: const TextStyle(fontSize: 22))),
+                    child: const Center(
+                      child: Text('🐾', style: TextStyle(fontSize: 22)),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1416,94 +2173,195 @@ class _HomeBodyState extends State<HomeBody> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(username,
-                          style: GoogleFonts.baloo2(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: FurPalsColors.textDark,
-                            height: 1.1,
-                          )),
+                      Text(
+                        fullName,
+                        style: GoogleFonts.baloo2(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: FurPalsColors.textDark,
+                          height: 1.1,
+                        ),
+                      ),
                       const SizedBox(height: 2),
-                      Text(breed,
-                          style: GoogleFonts.nunito(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: FurPalsColors.textMid,
-                          )),
+                      Text(
+                        '@$username',
+                        style: GoogleFonts.nunito(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: FurPalsColors.textMid,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => _showPostOptionsMenu(context, username),
-                  child: const Icon(Icons.more_horiz_rounded, color: Colors.black, size: 22),
+                  onTap: () => _showPostOptionsMenu(
+                    context,
+                    username,
+                    postId,
+                    currentUid,
+                    post['userId'] ?? '',
+                    mediaURL,
+                    mediaType,
+                  ),
+                  child: const Icon(
+                    Icons.more_horiz_rounded,
+                    color: Colors.black,
+                    size: 22,
+                  ),
                 ),
               ],
             ),
           ),
-          Container(
-            width: double.infinity, height: 220,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [bgStart, bgEnd],
+
+          // ── Media area: real image, video placeholder, or emoji placeholder ──
+          if (mediaURL.isNotEmpty && mediaType == 'photo')
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 400, minHeight: 200),
+              child: Image.network(
+                mediaURL,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _emojiPlaceholder(pair),
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    width: double.infinity,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: pair),
+                    ),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: FurPalsColors.pink,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            )
+          else if (mediaURL.isNotEmpty && mediaType == 'video')
+            GestureDetector(
+              onTap: () {},
+              child: Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 500),
+                child: _NetworkVideoPlayer(url: mediaURL),
+              ),
+            )
+          else
+            _emojiPlaceholder(pair),
+
+          // ── Location chip (if user added one) ──
+          if (location.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.location_on_rounded,
+                    size: 13,
+                    color: FurPalsColors.pink,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    location,
+                    style: GoogleFonts.nunito(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: FurPalsColors.textMid,
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 90))),
-          ),
+
+          // ── Action pills: Like, Comment, Share ──
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
             child: Row(
               children: [
-                GestureDetector(
-                  onTap: () => _showWhoLikedModal(context, likes),
-                  child: _actionPill(Icons.favorite_outline, likes, FurPalsColors.creamwhite, FurPalsColors.heartRed),
+                // LIKE button — toggles in Firestore
+                _LikeButton(
+                  postId: postId,
+                  likeCount: likeCount,
+                  currentUid: currentUid,
+                  postOwnerId: post['userId'] ?? '',
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onTap: () => _showCommentsModal(context, comments),
-                  child: _actionPill(Icons.chat_bubble_outline, comments, FurPalsColors.creamwhite, FurPalsColors.textDark),
+                  onTap: () =>
+                      _showCommentsModal(context, postId, commentCount),
+                  child: _actionPill(
+                    Icons.chat_bubble_outline,
+                    _formatCount(commentCount),
+                    FurPalsColors.creamwhite,
+                    FurPalsColors.textDark,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () => _showShareModal(context, username),
-                  child: _actionPill(Icons.share_outlined, shares, FurPalsColors.creamwhite, FurPalsColors.blue),
+                  child: _actionPill(
+                    Icons.share_outlined,
+                    '',
+                    FurPalsColors.creamwhite,
+                    FurPalsColors.blue,
+                  ),
                 ),
               ],
             ),
           ),
+
+          // ── Caption + time/date ──
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(caption,
+                if (description.isNotEmpty)
+                  Text(
+                    description,
                     style: GoogleFonts.nunito(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: FurPalsColors.textDark,
-                    )),
+                    ),
+                  ),
                 const SizedBox(height: 5),
                 Row(
                   children: [
-                    const Icon(Icons.access_time_rounded, size: 11, color: FurPalsColors.textSoft),
+                    const Icon(
+                      Icons.access_time_rounded,
+                      size: 11,
+                      color: FurPalsColors.textSoft,
+                    ),
                     const SizedBox(width: 3),
-                    Text(time,
-                        style: GoogleFonts.nunito(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: FurPalsColors.textSoft,
-                        )),
+                    Text(
+                      _formatTime(createdAt),
+                      style: GoogleFonts.nunito(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: FurPalsColors.textSoft,
+                      ),
+                    ),
                     const SizedBox(width: 8),
-                    const Icon(Icons.calendar_today_rounded, size: 11, color: FurPalsColors.textSoft),
+                    const Icon(
+                      Icons.calendar_today_rounded,
+                      size: 11,
+                      color: FurPalsColors.textSoft,
+                    ),
                     const SizedBox(width: 3),
-                    Text(date,
-                        style: GoogleFonts.nunito(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: FurPalsColors.textSoft,
-                        )),
+                    Text(
+                      _formatDate(createdAt),
+                      style: GoogleFonts.nunito(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: FurPalsColors.textSoft,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -1514,37 +2372,776 @@ class _HomeBodyState extends State<HomeBody> {
     );
   }
 
+  Widget _emojiPlaceholder(List<Color> pair) {
+    return Container(
+      width: double.infinity,
+      height: 220,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: pair,
+        ),
+      ),
+      child: const Center(child: Text('🐾', style: TextStyle(fontSize: 90))),
+    );
+  }
+
   Widget _actionPill(IconData icon, String count, Color bg, Color fg) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(22)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(22),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 15, color: fg),
-          const SizedBox(width: 5),
-          Text(count,
+          if (count.isNotEmpty) ...[
+            const SizedBox(width: 5),
+            Text(
+              count,
               style: GoogleFonts.nunito(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
                 color: FurPalsColors.textDark,
-              )),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
+
+
+//likeCount firebase
+class _LikeButton extends StatefulWidget {
+  final String postId;
+  final int likeCount;
+  final String currentUid;
+  final String postOwnerId;
+
+  const _LikeButton({
+    required this.postId,
+    required this.likeCount,
+    required this.currentUid,
+    required this.postOwnerId,
+  });
+
+  @override
+  State<_LikeButton> createState() => _LikeButtonState();
+}
+
+class _LikeButtonState extends State<_LikeButton> {
+  bool _liked = false;
+  bool _loading = false;
+  int _count = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _count = widget.likeCount;
+    _checkIfLiked();
+  }
+
+  Future<void> _checkIfLiked() async {
+    if (widget.currentUid.isEmpty) return;
+    final doc = await FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.postId)
+        .collection('likes')
+        .doc(widget.currentUid)
+        .get();
+    if (mounted) setState(() => _liked = doc.exists);
+  }
+
+  Future<void> _toggleLike() async {
+    if (_loading || widget.currentUid.isEmpty) return;
+    setState(() => _loading = true);
+
+    final likeRef = FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.postId)
+        .collection('likes')
+        .doc(widget.currentUid);
+    final postRef = FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.postId);
+
+    try {
+      if (_liked) {
+        // Un-like
+        await likeRef.delete();
+        await postRef.update({'likeCount': FieldValue.increment(-1)});
+        if (mounted) {
+          setState(() {
+            _liked = false;
+            _count = (_count - 1).clamp(0, 99999999);
+          });
+        }
+      } else {
+        // Like — save who liked with their profile info
+        final profile = await _getCurrentUserProfile();
+        await likeRef.set({
+          'userId': widget.currentUid,
+          'username': profile['username'] ?? '',
+          'fullName': profile['fullName'] ?? '',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        await postRef.update({'likeCount': FieldValue.increment(1)});
+        await _createNotification(widget.postOwnerId, widget.currentUid, 'like', widget.postId);
+        if (mounted) {
+          setState(() {
+            _liked = true;
+            _count = _count + 1;
+          });
+        }
+      }
+    } catch (_) {}
+
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _toggleLike,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: _liked
+              ? FurPalsColors.heartRed.withOpacity(0.12)
+              : FurPalsColors.creamwhite,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _liked ? Icons.favorite_rounded : Icons.favorite_outline,
+              size: 15,
+              color: _liked ? FurPalsColors.heartRed : FurPalsColors.heartRed,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              _formatCount(_count),
+              style: GoogleFonts.nunito(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: FurPalsColors.textDark,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NetworkVideoPlayer extends StatefulWidget {
+  final String url;
+  const _NetworkVideoPlayer({required this.url});
+
+  @override
+  State<_NetworkVideoPlayer> createState() => _NetworkVideoPlayerState();
+}
+
+class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
+    with WidgetsBindingObserver {
+  VideoPlayerController? _controller;
+  bool _initialized = false;
+  bool _hasError = false;
+  bool _isMuted = true; // Start muted
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _controller = VideoPlayerController.network(widget.url)
+      ..setLooping(true)
+      ..setVolume(0) // Muted by default
+      ..addListener(_handleVideoState)
+      ..initialize()
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _initialized = true;
+                _hasError = false;
+              });
+              _controller?.play();
+            }
+          })
+          .catchError((e) {
+            print('Video player initialize error: $e');
+            if (mounted) {
+              setState(() {
+                _hasError = true;
+              });
+            }
+          });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _controller?.pause();
+    }
+  }
+
+  void _handleVideoState() {
+    if (_controller?.value.hasError ?? false) {
+      setState(() {
+        _hasError = true;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller?.removeListener(_handleVideoState);
+    _controller?.pause();
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _seekForward() {
+    if (_controller != null) {
+      final duration = _controller!.value.duration;
+      final newPosition = _controller!.value.position + const Duration(seconds: 10);
+      _controller!.seekTo(newPosition > duration ? duration : newPosition);
+    }
+  }
+
+  void _seekBackward() {
+    if (_controller != null) {
+      final newPosition = _controller!.value.position - const Duration(seconds: 10);
+      _controller!.seekTo(newPosition < Duration.zero ? Duration.zero : newPosition);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasError) {
+      return Container(
+        width: double.infinity,
+        height: 220,
+        decoration: BoxDecoration(
+          color: FurPalsColors.lavender,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Center(
+          child: Text(
+            'Video unavailable. Please try a smaller file or check connection.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.nunito(
+              color: FurPalsColors.textDark,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (!_initialized || _controller == null) {
+      return const Center(
+        child: CircularProgressIndicator(color: FurPalsColors.pink),
+      );
+    }
+
+    final aspectRatio = _controller!.value.aspectRatio > 0
+        ? _controller!.value.aspectRatio
+        : 16 / 9;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        AspectRatio(
+          aspectRatio: aspectRatio,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              VideoPlayer(_controller!),
+              if (!_controller!.value.isInitialized)
+                Container(
+                  color: Colors.black54,
+                  child: const Center(
+                    child: CircularProgressIndicator(color: FurPalsColors.pink),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Positioned.fill(
+          child: Row(
+            children: [
+              // Left half — double tap to go back 10s
+              Expanded(
+                child: GestureDetector(
+                  onDoubleTap: () {
+                    _seekBackward();
+                  },
+                  onTap: () {
+                    setState(() {
+                      if (_controller!.value.isPlaying) {
+                        _controller?.pause();
+                      } else {
+                        _controller?.play();
+                      }
+                    });
+                  },
+                  onHorizontalDragEnd: (details) {
+                    if (details.primaryVelocity != null) {
+                      if (details.primaryVelocity! > 0) {
+                        _seekBackward();
+                      } else {
+                        _seekForward();
+                      }
+                    }
+                  },
+                  child: Container(
+                    color: Colors.transparent,
+                    alignment: Alignment.center,
+                  ),
+                ),
+              ),
+              // Right half — double tap to go forward 10s
+              Expanded(
+                child: GestureDetector(
+                  onDoubleTap: () {
+                    _seekForward();
+                  },
+                  onTap: () {
+                    setState(() {
+                      if (_controller!.value.isPlaying) {
+                        _controller?.pause();
+                      } else {
+                        _controller?.play();
+                      }
+                    });
+                  },
+                  onHorizontalDragEnd: (details) {
+                    if (details.primaryVelocity != null) {
+                      if (details.primaryVelocity! > 0) {
+                        _seekBackward();
+                      } else {
+                        _seekForward();
+                      }
+                    }
+                  },
+                  child: Container(
+                    color: Colors.transparent,
+                    alignment: Alignment.center,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Center play/pause icon
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                if (_controller!.value.isPlaying) {
+                  _controller?.pause();
+                } else {
+                  _controller?.play();
+                }
+              });
+            },
+            child: Container(
+              color: Colors.transparent,
+              alignment: Alignment.center,
+              child: Icon(
+                _controller!.value.isPlaying
+                    ? Icons.pause_circle_filled
+                    : Icons.play_circle_filled,
+                size: 56,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 8,
+          right: 8,
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _isMuted = !_isMuted;
+                _controller?.setVolume(_isMuted ? 0 : 1);
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+//saves post to the firebase
 class PostModal extends StatefulWidget {
   const PostModal({super.key});
 
   @override
   State<PostModal> createState() => _PostModalState();
 }
+
 class _PostModalState extends State<PostModal> {
   String _audience = 'Feed';
   String _privacy = 'Only me';
   static const _audienceOptions = ['Feed', 'Friends', 'Public'];
   static const _privacyOptions = ['Only me', 'Friends', 'Everyone'];
+
+  final _descriptionCtrl = TextEditingController();
+  final _locationCtrl = TextEditingController();
+
+  XFile? _pickedMedia;
+  String _mediaType = 'none'; // 'photo', 'video', 'none'
+  bool _showLocation = false;
+  VideoPlayerController? _videoController;
+  bool _postVideoMuted = false; // Sound enabled by default
+
+  @override
+  void dispose() {
+    _descriptionCtrl.dispose();
+    _locationCtrl.dispose();
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+    if (file != null) {
+      setState(() {
+        _pickedMedia = file;
+        _mediaType = 'photo';
+      });
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    try {
+      final picker = ImagePicker();
+      final file = await picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 5),
+      );
+      if (file != null) {
+        final videoFile = File(file.path);
+        final videoSize = videoFile.lengthSync();
+        final videoSizeMB = videoSize / 1024 / 1024;
+        const maxSize = 100 * 1024 * 1024; // 100 MB limit
+        
+        // Always show file size info
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Video size: ${videoSizeMB.toStringAsFixed(1)} MB',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+              ),
+              backgroundColor: videoSizeMB > 80 
+                  ? FurPalsColors.heartRed 
+                  : FurPalsColors.green,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        
+        if (videoSize > maxSize) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '❌ Video too large! (${videoSizeMB.toStringAsFixed(1)} MB)\nMax: 100 MB\n\nTip: Videos are auto-compressed. Try again or use a shorter clip.',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                ),
+                backgroundColor: FurPalsColors.heartRed,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          return;
+        }
+        
+        print('Video picked: ${file.path} (${videoSizeMB.toStringAsFixed(2)} MB)');
+        _videoController?.dispose();
+        _videoController = VideoPlayerController.file(videoFile);
+        await _videoController!.initialize();
+        _videoController!.setLooping(true);
+        _videoController!.setVolume(0.0); // Start muted, user can unmute
+        
+        // Give MediaCodec time to initialize properly
+        await Future.delayed(const Duration(milliseconds: 200));
+        
+        _videoController!.play();
+        setState(() {
+          _pickedMedia = file;
+          _mediaType = 'video';
+          _postVideoMuted = false; // Video starts muted
+        });
+      } else {
+        print('No video selected');
+      }
+    } catch (e) {
+      print('Video picker error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to pick video. Try again.',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+            ),
+            backgroundColor: FurPalsColors.heartRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<File?> _compressVideo(File videoFile) async {
+    try {
+      final originalSize = videoFile.lengthSync();
+      print('Original video size: ${(originalSize / 1024 / 1024).toStringAsFixed(2)} MB');
+
+      // Safe guard against lower-level isolate errors
+      final info = await VideoCompress.compressVideo(
+        videoFile.path,
+        quality: VideoQuality.LowQuality,
+        deleteOrigin: false,
+        includeAudio: true,
+      ).catchError((error, stack) {
+        print('VideoCompress isolate error: $error');
+        print(stack);
+        return null;
+      });
+
+      if (info == null || info.path == null) {
+        print('Compression info invalid, using original file.');
+        return null;
+      }
+
+      final compressed = File(info.path!);
+      final compressedSize = compressed.lengthSync();
+      print('Compressed video size: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB');
+      print('Compression ratio: ${((1 - compressedSize / originalSize) * 100).toStringAsFixed(1)}%');
+      
+      return compressed;
+    } catch (e, stack) {
+      print('Video compression failed (caught): $e');
+      print(stack);
+      return null;
+    }
+  }
+
+  Future<String> _uploadMedia(String uid) async {
+    if (_pickedMedia == null) return '';
+    try {
+      File file = File(_pickedMedia!.path);
+      if (!file.existsSync()) {
+        print('Video/Photo file does not exist at: ${_pickedMedia!.path}');
+        return '';
+      }
+
+      if (_mediaType == 'video') {
+        // Ensure video is paused before compression
+        _videoController?.pause();
+        
+        final compressed = await _compressVideo(file);
+        if (compressed != null && compressed.existsSync()) {
+          print(
+            'Video compressed from ${file.lengthSync()} bytes to ${compressed.lengthSync()} bytes',
+          );
+          file = compressed;
+        } else {
+          print(
+            'Video compression skipped or failed; uploading original file.',
+          );
+        }
+      }
+
+      final ext = _mediaType == 'photo' ? 'jpg' : 'mp4';
+      final path = 'posts/$uid/${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final ref = FirebaseStorage.instance.ref().child(path);
+
+      print('Uploading $_mediaType to: $path');
+      print('File size before upload: ${(file.lengthSync() / 1024 / 1024).toStringAsFixed(2)} MB');
+      final uploadTask = ref.putFile(file);
+      uploadTask.snapshotEvents.listen((event) {
+        final progress =
+            event.bytesTransferred /
+            (event.totalBytes == 0 ? 1 : event.totalBytes);
+        print('Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
+      });
+
+      await uploadTask;
+      final url = await ref.getDownloadURL();
+      print('Upload success: $url');
+      
+      // Give the UI time to update before proceeding
+      await Future.delayed(const Duration(milliseconds: 100));
+      
+      return url;
+    } catch (e) {
+      print('Upload error: $e');
+      return '';
+    }
+  }
+
+  Future<void> _sharePost() async {
+    // Stop and dispose video controller before upload to prevent buffer issues
+    if (_mediaType == 'video' && _videoController != null) {
+      _videoController!.pause();
+      // Keep controller for metadata, don't dispose yet to avoid black screen
+      // It will be disposed when modal closes
+    }
+
+    // Show loading dialog
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          backgroundColor: FurPalsColors.warmWhite,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: FurPalsColors.pink),
+              const SizedBox(height: 16),
+              Text(
+                'Uploading your post...',
+                style: GoogleFonts.baloo2(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: FurPalsColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _mediaType == 'video' 
+                  ? 'Videos may take longer (max 100 MB)'
+                  : 'This may take a moment...',
+                style: GoogleFonts.nunito(
+                  fontSize: 12,
+                  color: FurPalsColors.textMid,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      if (uid.isEmpty) throw 'User not authenticated';
+
+      final profile = await _getCurrentUserProfile();
+      final uname = profile['username'] ?? '';
+      final fname = profile['fullName'] ?? '';
+
+      // Upload media if selected, get download URL
+      final mediaURL = await _uploadMedia(uid);
+
+      // If media was selected but upload failed, show error
+      if (_pickedMedia != null && mediaURL.isEmpty) {
+        if (mounted) Navigator.pop(context); // Close loading dialog
+        final fileSize = File(_pickedMedia!.path).lengthSync() / 1024 / 1024;
+        throw 'Upload failed (${fileSize.toStringAsFixed(1)} MB).\n\n✗ Can handle: up to 100 MB\n✗ Check: Internet connection and Firebase usage limits\n✗ Tip: Convert to lower quality or shorter duration if you see a black screen';
+      }
+
+      // Save post to Firestore
+      final postRef = FirebaseFirestore.instance.collection('posts').doc();
+      await postRef.set({
+        'postId': postRef.id,
+        'userId': uid,
+        'username': uname,
+        'fullName': fname,
+        'description': _descriptionCtrl.text.trim(),
+        'mediaURL': mediaURL,
+        'mediaType': _mediaType,
+        'videoWidth': _mediaType == 'video' && _videoController != null ? _videoController!.value.size.width : 0,
+        'videoHeight': _mediaType == 'video' && _videoController != null ? _videoController!.value.size.height : 0,
+        'location': _showLocation ? _locationCtrl.text.trim() : '',
+        'audience': _audience,
+        'privacy': _privacy,
+        'likeCount': 0,
+        'commentCount': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        Navigator.pop(context); // Close post modal
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Post shared! 🐾',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+            ),
+            backgroundColor: FurPalsColors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Share post error: $e');
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.toString().contains('Failed')
+                  ? e.toString()
+                  : 'Failed to post. Please try again.',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+            ),
+            backgroundColor: FurPalsColors.heartRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1559,60 +3156,78 @@ class _PostModalState extends State<PostModal> {
         children: [
           const SizedBox(height: 12),
           Container(
-            width: 40, height: 4,
+            width: 40,
+            height: 4,
             decoration: BoxDecoration(
               color: FurPalsColors.blush,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 16),
+
+          // Header
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                Text('New Post',
-                    style: GoogleFonts.baloo2(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: FurPalsColors.textDark,
-                    )),
+                Text(
+                  'New Post',
+                  style: GoogleFonts.baloo2(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: FurPalsColors.textDark,
+                  ),
+                ),
                 const Spacer(),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: Container(
-                    width: 32, height: 32,
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
                       color: FurPalsColors.blush,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.close_rounded, color: FurPalsColors.pink, size: 18),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: FurPalsColors.pink,
+                      size: 18,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 20),
+
+          // Avatar + username + dropdowns + description input
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 15),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Avatar — unchanged
                 Container(
-                  width: 44, height: 44,
+                  width: 44,
+                  height: 44,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(colors: [FurPalsColors.blush, FurPalsColors.peach]),
+                    gradient: LinearGradient(
+                      colors: [FurPalsColors.blush, FurPalsColors.peach],
+                    ),
                   ),
-                  child: const Center(child: Text('🐾', style: TextStyle(fontSize: 22))),
+                  child: const Center(
+                    child: Text('🐾', style: TextStyle(fontSize: 22)),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Real username from Firebase Auth
                       Text(
-                        'Username',
+                        FirebaseAuth.instance.currentUser?.displayName ??
+                            'FurPals User',
                         style: GoogleFonts.baloo2(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
@@ -1637,8 +3252,10 @@ class _PostModalState extends State<PostModal> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 15, width: 1,),
-                    TextField(
+                      const SizedBox(height: 15),
+                      // Description input
+                      TextField(
+                        controller: _descriptionCtrl,
                         maxLines: 3,
                         decoration: InputDecoration(
                           hintText: "What's your pet up to?",
@@ -1653,47 +3270,316 @@ class _PostModalState extends State<PostModal> {
                           color: FurPalsColors.black100,
                           fontWeight: FontWeight.w600,
                         ),
+                      ),
+
+                      // Location input (shown only when location is tapped)
+                      if (_showLocation)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: _locationCtrl,
+                              decoration: InputDecoration(
+                                hintText: 'Search or enter location...',
+                                hintStyle: GoogleFonts.nunito(
+                                  color: FurPalsColors.textSoft,
+                                  fontSize: 13,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: FurPalsColors.mint,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: FurPalsColors.mint,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: FurPalsColors.pink,
+                                    width: 2,
+                                  ),
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.location_on_rounded,
+                                  color: FurPalsColors.pink,
+                                  size: 18,
+                                ),
+                                suffixIcon: _locationCtrl.text.isNotEmpty
+                                    ? GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _locationCtrl.clear();
+                                          });
+                                        },
+                                        child: const Icon(
+                                          Icons.close_rounded,
+                                          color: FurPalsColors.textMid,
+                                          size: 18,
+                                        ),
+                                      )
+                                    : null,
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                              ),
+                              style: GoogleFonts.nunito(
+                                fontSize: 13,
+                                color: FurPalsColors.textDark,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              onChanged: (value) => setState(() {}),
+                            ),
+                          ],
                         ),
-                      
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 30),
+
+          // Preview selected media thumbnail — Full width and centered
+          if (_pickedMedia != null) ...[
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 15),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: _mediaType == 'photo'
+                        ? Image.file(
+                            File(_pickedMedia!.path),
+                            height: 200,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          )
+                        : (_videoController != null &&
+                              _videoController!.value.isInitialized)
+                        ? SizedBox(
+                            height: 200,
+                            width: double.infinity,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                AspectRatio(
+                                  aspectRatio: _videoController!.value.aspectRatio,
+                                  child: VideoPlayer(_videoController!),
+                                ),
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _videoController!.value.isPlaying
+                                          ? _videoController!.pause()
+                                          : _videoController!.play();
+                                    });
+                                  },
+                                  child: Container(
+                                    color: Colors.black26,
+                                    child: Icon(
+                                      _videoController!.value.isPlaying
+                                          ? Icons.pause_circle
+                                          : Icons.play_circle,
+                                      size: 56,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Container(
+                            height: 200,
+                            color: FurPalsColors.lavender,
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: FurPalsColors.pink,
+                              ),
+                            ),
+                          ),
+                  ),
+                  // Mute/Unmute button for video preview (top-left)
+                  if (_mediaType == 'video')
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _postVideoMuted = !_postVideoMuted;
+                            _videoController!.setVolume(_postVideoMuted ? 0.0 : 1.0);
+                          });
+                        },
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            _postVideoMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  // Close button (top-right)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        _pickedMedia = null;
+                        _mediaType = 'none';
+                        _videoController?.pause();
+                        _videoController?.dispose();
+                        _videoController = null;
+                      }),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // File size badge — Full width and centered (for photos and videos)
+            if (_pickedMedia != null) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 15),
+                child: Builder(
+                  builder: (context) {
+                    final fileSize = File(_pickedMedia!.path).lengthSync() / 1024 / 1024;
+                    final isLarge = fileSize > 80;
+                    return Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isLarge ? FurPalsColors.heartRed.withOpacity(0.15) : FurPalsColors.mint.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isLarge ? FurPalsColors.heartRed : FurPalsColors.green,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isLarge ? Icons.warning_amber_rounded : Icons.image_rounded,
+                              color: isLarge ? FurPalsColors.heartRed : FurPalsColors.green,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              isLarge 
+                                ? '${_mediaType == 'video' ? '📹' : ''} ${fileSize.toStringAsFixed(1)} MB — Upload will be slow'
+                                : '${_mediaType == 'video' ? '📹' : ''} ${fileSize.toStringAsFixed(1)} MB',
+                              style: GoogleFonts.nunito(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: isLarge ? FurPalsColors.heartRed : FurPalsColors.green,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+
+          const SizedBox(height: 20),
+
+          // Photo / Video / Location buttons 
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
             child: Row(
               children: [
-                _opt(Icons.image_rounded,       'Photo',    FurPalsColors.mint),
+                GestureDetector(
+                  onTap: _pickImage,
+                  child: _opt(Icons.image_rounded, 'Photo', FurPalsColors.mint),
+                ),
                 const SizedBox(width: 10),
-                _opt(Icons.videocam_rounded,    'Video',    FurPalsColors.lavender),
+                GestureDetector(
+                  onTap: _pickVideo,
+                  child: _opt(
+                    Icons.videocam_rounded,
+                    'Video',
+                    FurPalsColors.lavender,
+                  ),
+                ),
                 const SizedBox(width: 10),
-                _opt(Icons.location_on_rounded, 'Location', FurPalsColors.peach),
+                GestureDetector(
+                  onTap: _showLocationPicker,
+                  child: _opt(
+                    Icons.location_on_rounded,
+                    'Location',
+                    FurPalsColors.peach,
+                  ),
+                ),
               ],
             ),
           ),
+
           const Spacer(),
+
+          // Share Post button — saves to Firestore
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
             child: GestureDetector(
-              onTap: () => Navigator.pop(context),
+              onTap: _sharePost,
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  gradient: const LinearGradient(colors: [FurPalsColors.pink, FurPalsColors.pinkLight]),
-                  boxShadow: const [BoxShadow(color: Color(0x55F4738A), blurRadius: 14, offset: Offset(0, 6))],
+                  gradient: const LinearGradient(
+                    colors: [FurPalsColors.pink, FurPalsColors.pinkLight],
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x55F4738A),
+                      blurRadius: 14,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
                 ),
                 child: Center(
-                  child: Text('Share Post',
-                      style: GoogleFonts.baloo2(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      )),
+                  child: Text(
+                    'Share Post 🐾',
+                    style: GoogleFonts.baloo2(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1703,6 +3589,178 @@ class _PostModalState extends State<PostModal> {
     );
   }
 
+  // Location picker with search and input functionality
+  Future<void> _showLocationPicker() async {
+    final TextEditingController searchCtrl = TextEditingController();
+    List<String> commonLocations = [
+      'Home',
+      'Park',
+      'Beach',
+      'Coffee Shop',
+      'Dog Park',
+      'Pet Store',
+      'Vet Clinic',
+      'Downtown',
+      'Shopping Mall',
+      'Garden',
+    ];
+    List<String> filteredLocations = commonLocations;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              backgroundColor: FurPalsColors.warmWhite,
+              title: Text(
+                'Select Location 📍',
+                style: GoogleFonts.baloo2(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: FurPalsColors.textDark,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Search field
+                    TextField(
+                      controller: searchCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'Search or type location...',
+                        hintStyle: GoogleFonts.nunito(
+                          color: FurPalsColors.textSoft,
+                          fontSize: 13,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          color: FurPalsColors.pink,
+                          size: 18,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: FurPalsColors.mint,
+                            width: 1.5,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: FurPalsColors.mint,
+                            width: 1.5,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: FurPalsColors.pink,
+                            width: 2,
+                          ),
+                        ),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                      ),
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        color: FurPalsColors.textDark,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      onChanged: (value) {
+                        setModalState(() {
+                          filteredLocations = commonLocations
+                              .where((loc) => loc.toLowerCase().contains(value.toLowerCase()))
+                              .toList();
+                          if (value.isNotEmpty && !filteredLocations.contains(value)) {
+                            filteredLocations.insert(0, value);
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    // Location suggestions
+                    SizedBox(
+                      height: 200,
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: filteredLocations.length,
+                        itemBuilder: (context, index) {
+                          final location = filteredLocations[index];
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _locationCtrl.text = location;
+                                _showLocation = true;
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              margin: const EdgeInsets.only(bottom: 6),
+                              decoration: BoxDecoration(
+                                color: FurPalsColors.mint.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: FurPalsColors.mint,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.location_on_rounded,
+                                    color: FurPalsColors.pink,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      location,
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: FurPalsColors.textDark,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.nunito(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: FurPalsColors.textMid,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+          
   Widget _opt(IconData icon, String label, Color bg) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -1715,29 +3773,29 @@ class _PostModalState extends State<PostModal> {
         children: [
           Icon(icon, size: 16, color: FurPalsColors.textMid),
           const SizedBox(width: 6),
-          Text(label,
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: FurPalsColors.textMid,
-              )),
+          Text(
+            label,
+            style: GoogleFonts.nunito(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: FurPalsColors.textMid,
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-// Placeholder for empty screens
-
-
-
 class PetsBody extends StatelessWidget {
   const PetsBody({super.key});
 
   @override
   Widget build(BuildContext context) => const _PlaceholderBody(
-      emoji: '🐾', title: 'My Pets',
-      subtitle: 'Manage your furry companions');
+    emoji: '🐾',
+    title: 'My Pets',
+    subtitle: 'Manage your furry companions',
+  );
 }
 
 class ProfileBody extends StatelessWidget {
@@ -1745,14 +3803,18 @@ class ProfileBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const _PlaceholderBody(
-      emoji: '😊', title: 'Profile',
-      subtitle: 'Your FurPals account');
+    emoji: '😊',
+    title: 'Profile',
+    subtitle: 'Your FurPals account',
+  );
 }
 
 class _PlaceholderBody extends StatelessWidget {
   final String emoji, title, subtitle;
   const _PlaceholderBody({
-    required this.emoji, required this.title, required this.subtitle,
+    required this.emoji,
+    required this.title,
+    required this.subtitle,
   });
 
   @override
@@ -1765,19 +3827,23 @@ class _PlaceholderBody extends StatelessWidget {
           children: [
             Text(emoji, style: const TextStyle(fontSize: 64)),
             const SizedBox(height: 16),
-            Text(title,
-                style: GoogleFonts.baloo2(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: FurPalsColors.textDark,
-                )),
+            Text(
+              title,
+              style: GoogleFonts.baloo2(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: FurPalsColors.textDark,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(subtitle,
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  color: FurPalsColors.textMid,
-                  fontWeight: FontWeight.w600,
-                )),
+            Text(
+              subtitle,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                color: FurPalsColors.textMid,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
