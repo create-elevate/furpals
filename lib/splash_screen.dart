@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // TODO: Uncomment when ready to navigate
 // import '../login/login_screen.dart';
@@ -93,13 +95,24 @@ class _SplashScreenState extends State<SplashScreen>
     await _navigateToNext();
   }
 
+  Future<bool> _isRemembered() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('remember_me') ?? false;
+  }
+
   Future<void> _navigateToNext() async {
     if (!mounted) return;
     _floatCtrl.stop();
     await _exitCtrl.forward();
     if (!mounted) return;
 
-    Navigator.of(context).pushReplacementNamed('/login');
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final remembered = await _isRemembered();
+    if (currentUser != null || remembered) {
+      Navigator.of(context).pushReplacementNamed('/home');
+    } else {
+      Navigator.of(context).pushReplacementNamed('/login');
+    }
   }
 
   @override
