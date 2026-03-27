@@ -12,13 +12,13 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  // ── Controllers ────────────────────────────────────────────────────────────
+  // Controllers 
   late final AnimationController _logoCtrl;
   late final AnimationController _titleCtrl;
   late final AnimationController _floatCtrl;
   late final AnimationController _exitCtrl;
 
-  // ── Animations ─────────────────────────────────────────────────────────────
+  // Animations 
   late final Animation<double> _logoScale;
   late final Animation<double> _logoFade;
   late final Animation<double> _titleFade;
@@ -26,7 +26,7 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _float;
   late final Animation<double> _exitFade;
 
-  // ── Config ─────────────────────────────────────────────────────────────────
+  //  Config 
   static const Duration _splashDuration = Duration(seconds: 3);
 
   @override
@@ -142,7 +142,7 @@ class _SplashScreenState extends State<SplashScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // ── Title ─────────────────────────────────────────────────
+              // Title 
               AnimatedBuilder(
                 animation: _titleCtrl,
                 builder: (_, _) => FadeTransition(
@@ -156,7 +156,7 @@ class _SplashScreenState extends State<SplashScreen>
 
               const SizedBox(height: 48),
 
-              // ── Logo ──────────────────────────────────────────────────
+              // Logo 
               AnimatedBuilder(
                 animation: Listenable.merge([_logoCtrl, _floatCtrl]),
                 builder: (_, _) => FadeTransition(
@@ -178,7 +178,7 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-// ── "furpals" title — Modak font ─────────────────────────────────────────────
+//  "furpals" title — Modak font
 class _FurpalsTitle extends StatelessWidget {
   const _FurpalsTitle();
 
@@ -196,7 +196,7 @@ class _FurpalsTitle extends StatelessWidget {
   }
 }
 
-// ── Logo ─────────────────────────────────────────────────────────────────────
+// Logo
 class _Logo extends StatelessWidget {
   const _Logo();
 
