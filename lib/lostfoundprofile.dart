@@ -34,7 +34,7 @@ class _LostFoundProfileScreenState extends State<LostFoundProfileScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ── PHOTO SECTION ─────────────────────────────────────────────
+            // PHOTO SECTION 
             Stack(
               children: [
 
@@ -124,7 +124,7 @@ class _LostFoundProfileScreenState extends State<LostFoundProfileScreen> {
               ],
             ),
 
-            // ── PET INFO ──────────────────────────────────────────────────
+            // PET INFO 
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
               child: Column(
@@ -175,7 +175,7 @@ class _LostFoundProfileScreenState extends State<LostFoundProfileScreen> {
 
                   const SizedBox(height: 16),
 
-                  // ── STAT PILLS — equal width ───────────────────────────
+                  //  STAT PILLS — equal width 
                   Row(
                     children: [
                       Expanded(child: _statPill('Age',    pet['age']    as String? ?? '0')),
@@ -188,7 +188,7 @@ class _LostFoundProfileScreenState extends State<LostFoundProfileScreen> {
 
                   const SizedBox(height: 20),
 
-                  // ── OWNER NAME + CONTACT ICONS ────────────────────────
+                  // OWNER NAME + CONTACT ICONS 
                   Row(
                     children: [
                       Text(
