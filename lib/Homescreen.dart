@@ -15,6 +15,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:gal/gal.dart';
+import 'package:furpals/settings.dart';
+import 'package:furpals/models.dart';
+import 'package:furpals/petmanagement.dart';
 
 class FurPalsColors {
   static const blush = Color(0xFFF9C8D0);
@@ -47,24 +50,15 @@ const appBackgroundGradient = LinearGradient(
   colors: [Color(0xFFFCDDE8), Color(0xFFFFE8D2), Color(0xFFD4F0E4)],
 );
 
-/// Returns the currently logged-in user's Firestore profile as a Map.
-/// Returns an empty map if something goes wrong.
 Future<Map<String, dynamic>> _getCurrentUserProfile() async {
   try {
     final authUser = FirebaseAuth.instance.currentUser;
     final uid = authUser?.uid;
     if (uid == null) return {};
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .get();
+    final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
     final data = doc.data() ?? {};
     if (data.isNotEmpty) return data;
-
-    final fallbackUsername = authUser?.displayName
-            ?.trim()
-            .replaceAll(' ', '')
-            .toLowerCase() ??
+    final fallbackUsername = authUser?.displayName?.trim().replaceAll(' ', '').toLowerCase() ??
         authUser?.email?.split('@').first ??
         'user_$uid';
     return {
@@ -77,7 +71,6 @@ Future<Map<String, dynamic>> _getCurrentUserProfile() async {
   }
 }
 
-/// Formats a Firestore Timestamp into a readable "HH:MM AM/PM" string.
 String _formatTime(Timestamp? ts) {
   if (ts == null) return '';
   final dt = ts.toDate().toLocal();
@@ -87,28 +80,16 @@ String _formatTime(Timestamp? ts) {
   return '$h:$m $ap';
 }
 
-/// Formats a Firestore Timestamp into "Month Day, Year".
 String _formatDate(Timestamp? ts) {
   if (ts == null) return '';
   final dt = ts.toDate().toLocal();
   const months = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
   ];
   return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
 }
 
-/// Formats a large number like 130900 → "130.9K".
 String _formatCount(int n) {
   if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
   if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
@@ -120,7 +101,6 @@ Future<void> _clearRememberMe() async {
   await prefs.remove('remember_me');
 }
 
-/// Saves the media (image or video) from the given URL to the device's gallery.
 Future<void> _saveMediaToGallery(String mediaURL, String mediaType) async {
   try {
     final response = await HttpClient().getUrl(Uri.parse(mediaURL));
@@ -131,40 +111,34 @@ Future<void> _saveMediaToGallery(String mediaURL, String mediaType) async {
     final tempPath = '${Directory.systemTemp.path}/furpals_$timestamp$ext';
     final tempFile = File(tempPath);
     await tempFile.writeAsBytes(bytes);
-    
     if (mediaType.contains('video')) {
       await Gal.putVideo(tempFile.path);
     } else {
       await Gal.putImage(tempFile.path);
     }
-    print('Media saved to gallery successfully');
-    
     await tempFile.delete();
   } catch (e) {
     print('Error saving media: $e');
   }
 }
 
-/// Creates a notification document in Firestore.
 Future<void> _createNotification(String toUserId, String fromUserId, String type, String postId, {String? commentText}) async {
   if (toUserId.isEmpty || fromUserId.isEmpty || toUserId == fromUserId) return;
   final profile = await _getCurrentUserProfile();
   final fromUsername = profile['username'] ?? FirebaseAuth.instance.currentUser?.displayName ?? '';
   final fromFullName = profile['fullName'] ?? FirebaseAuth.instance.currentUser?.displayName ?? '';
-
   await FirebaseFirestore.instance.collection('notifications').add({
     'toUserId': toUserId,
     'fromUserId': fromUserId,
     'fromUsername': fromUsername,
     'fromFullName': fromFullName,
-    'type': type, // 'like', 'comment', 'follow', etc.
+    'type': type,
     'postId': postId,
     'commentText': commentText ?? '',
     'isRead': false,
     'createdAt': FieldValue.serverTimestamp(),
   });
 }
-
 
 class Homescreen extends StatelessWidget {
   const Homescreen({super.key});
@@ -224,7 +198,6 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-//bottom nav bar
 class _FlatBottomNav extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onTap;
@@ -243,17 +216,12 @@ class _FlatBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final double systemBottom = MediaQuery.of(context).padding.bottom;
-
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
-          BoxShadow(
-            color: FurPalsColors.shadow,
-            blurRadius: 24,
-            offset: Offset(0, -6),
-          ),
+          BoxShadow(color: FurPalsColors.shadow, blurRadius: 24, offset: Offset(0, -6)),
         ],
       ),
       padding: EdgeInsets.fromLTRB(0, 10, 0, systemBottom + 10),
@@ -263,7 +231,6 @@ class _FlatBottomNav extends StatelessWidget {
         children: List.generate(5, (i) {
           final isPost = i == 2;
           final isActive = !isPost && i == selectedIndex;
-
           return Expanded(
             child: GestureDetector(
               onTap: () => onTap(i),
@@ -276,50 +243,31 @@ class _FlatBottomNav extends StatelessWidget {
                     child: Center(
                       child: isPost
                           ? Container(
-                              width: 44,
-                              height: 44,
+                              width: 44, height: 44,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(14),
                                 gradient: const LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
-                                  colors: [
-                                    FurPalsColors.pink,
-                                    FurPalsColors.pinkLight,
-                                  ],
+                                  colors: [FurPalsColors.pink, FurPalsColors.pinkLight],
                                 ),
                                 boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x55F4738A),
-                                    blurRadius: 14,
-                                    offset: Offset(0, 4),
-                                  ),
+                                  BoxShadow(color: Color(0x55F4738A), blurRadius: 14, offset: Offset(0, 4)),
                                 ],
                               ),
-                              child: const Icon(
-                                Icons.add_rounded,
-                                color: Colors.white,
-                                size: 26,
-                              ),
+                              child: const Icon(Icons.add_rounded, color: Colors.white, size: 26),
                             )
                           : AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
-                                color: isActive
-                                    ? FurPalsColors.blush
-                                    : Colors.transparent,
+                                color: isActive ? FurPalsColors.blush : Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
                                 _icons[i],
                                 size: 22,
-                                color: isActive
-                                    ? FurPalsColors.pink
-                                    : FurPalsColors.pink.withOpacity(0.4),
+                                color: isActive ? FurPalsColors.pink : FurPalsColors.pink.withOpacity(0.4),
                               ),
                             ),
                     ),
@@ -333,8 +281,8 @@ class _FlatBottomNav extends StatelessWidget {
                       color: isPost
                           ? FurPalsColors.pink
                           : isActive
-                          ? FurPalsColors.pink
-                          : FurPalsColors.textDark.withOpacity(0.4),
+                              ? FurPalsColors.pink
+                              : FurPalsColors.textDark.withOpacity(0.4),
                       letterSpacing: 0.2,
                     ),
                     textAlign: TextAlign.center,
@@ -349,7 +297,6 @@ class _FlatBottomNav extends StatelessWidget {
   }
 }
 
-//username (firebase)
 class FurPalsDrawer extends StatelessWidget {
   const FurPalsDrawer({super.key});
 
@@ -365,127 +312,85 @@ class FurPalsDrawer extends StatelessWidget {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             stops: [0.0, 0.50, 0.84, 1.0],
-            colors: [
-              Color(0xFFFDEBEC),
-              Color(0xFFFDEBEC),
-              Color(0xFFFFFFFF),
-              Color(0xFFFFFFFF),
-            ],
+            colors: [Color(0xFFFDEBEC), Color(0xFFFDEBEC), Color(0xFFFFFFFF), Color(0xFFFFFFFF)],
           ),
           borderRadius: BorderRadius.only(
             topRight: Radius.circular(32),
             bottomRight: Radius.circular(32),
           ),
           boxShadow: [
-            BoxShadow(
-              color: Color(0x25B47864),
-              blurRadius: 32,
-              offset: Offset(8, 0),
-            ),
+            BoxShadow(color: Color(0x25B47864), blurRadius: 32, offset: Offset(8, 0)),
           ],
         ),
         child: SafeArea(
           child: FutureBuilder<Map<String, dynamic>>(
-            // Reads the logged-in user's profile from Firestore
             future: _getCurrentUserProfile(),
             builder: (context, snapshot) {
               final profile = snapshot.data ?? {};
               final fullName = profile['fullName'] ?? 'FurPals User';
               final username = profile['username'] ?? '';
-
-              return SingleChildScrollView(
-                padding: EdgeInsets.zero,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: MediaQuery.of(context).size.height - MediaQuery.of(context).padding.vertical,
-                  ),
-                  child: IntrinsicHeight(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 30),
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 30),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
                       children: [
                         Container(
-                          width: 60,
-                          height: 60,
+                          width: 60, height: 60,
                           decoration: const BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: [
-                                FurPalsColors.blush,
-                                FurPalsColors.peach,
-                              ],
-                            ),
+                            gradient: LinearGradient(colors: [FurPalsColors.blush, FurPalsColors.peach]),
                           ),
-                          child: const Center(
-                            child: Text('🐾', style: TextStyle(fontSize: 30)),
-                          ),
+                          child: const Center(child: Text('🐾', style: TextStyle(fontSize: 30))),
                         ),
                         const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // REAL fullName from Firestore
-                            Text(
-                              fullName,
-                              style: GoogleFonts.baloo2(
-                                fontSize: 25,
-                                fontWeight: FontWeight.w800,
-                                color: const Color(0xFF4A3728),
-                                height: 1.1,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                fullName,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                                style: GoogleFonts.baloo2(
+                                  fontSize: 25, fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF4A3728), height: 1.1,
+                                ),
                               ),
-                            ),
-                            // REAL username from Firestore
-                            Text(
-                              '@$username',
-                              style: GoogleFonts.nunito(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0x40000000),
+                              Text(
+                                '@$username',
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                                style: GoogleFonts.nunito(
+                                  fontSize: 15, fontWeight: FontWeight.w600,
+                                  color: const Color(0x40000000),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 30),
-                  _pill(
-                    context,
-                    Icons.settings_rounded,
-                    'Settings',
-                    () => Navigator.pop(context),
-                  ),
+                  _pill(context, Icons.settings_rounded, 'Settings', () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                  }),
                   const SizedBox(height: 12),
-                  _pill(
-                    context,
-                    Icons.bookmark_rounded,
-                    'Saved Posts',
-                    () => Navigator.pop(context),
-                  ),
+                  _pill(context, Icons.bookmark_rounded, 'Saved Posts', () => Navigator.pop(context)),
                   const SizedBox(height: 12),
-                  _pill(
-                    context,
-                    Icons.info_outline_rounded,
-                    'About',
-                    () => Navigator.pop(context),
-                  ),
+                  _pill(context, Icons.info_outline_rounded, 'About', () => Navigator.pop(context)),
                   const SizedBox(height: 12),
-                  _pill(
-                    context,
-                    Icons.help_outline_rounded,
-                    'Help & Support',
-                    () => Navigator.pop(context),
-                  ),
+                  _pill(context, Icons.help_outline_rounded, 'Help & Support', () => Navigator.pop(context)),
                   const Spacer(),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
                     child: GestureDetector(
                       onTap: () async {
-                        Navigator.pop(context); // close drawer first
+                        Navigator.pop(context);
                         final uid = FirebaseAuth.instance.currentUser?.uid;
                         if (uid != null) {
                           await FirebaseFirestore.instance
@@ -496,10 +401,7 @@ class FurPalsDrawer extends StatelessWidget {
                         await FirebaseAuth.instance.signOut();
                         await _clearRememberMe();
                         if (context.mounted) {
-                          Navigator.of(context).pushNamedAndRemoveUntil(
-                            '/login',
-                            (route) => false,
-                          );
+                          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
                         }
                       },
                       child: Container(
@@ -508,34 +410,21 @@ class FurPalsDrawer extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: const Color(0xFFFDE0E6),
                           borderRadius: BorderRadius.circular(50),
-                          border: Border.all(
-                            color: FurPalsColors.pinkLight.withOpacity(0.5),
-                            width: 1.5,
-                          ),
+                          border: Border.all(color: FurPalsColors.pinkLight.withOpacity(0.5), width: 1.5),
                           boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x20F4738A),
-                              blurRadius: 10,
-                              offset: Offset(0, 4),
-                            ),
+                            BoxShadow(color: Color(0x20F4738A), blurRadius: 10, offset: Offset(0, 4)),
                           ],
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(
-                              Icons.logout_rounded,
-                              color: FurPalsColors.pink,
-                              size: 18,
-                            ),
+                            const Icon(Icons.logout_rounded, color: FurPalsColors.pink, size: 18),
                             const SizedBox(width: 8),
                             Text(
                               'LOG OUT',
                               style: GoogleFonts.nunito(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: FurPalsColors.pink,
-                                letterSpacing: 1.2,
+                                fontSize: 13, fontWeight: FontWeight.w900,
+                                color: FurPalsColors.pink, letterSpacing: 1.2,
                               ),
                             ),
                           ],
@@ -543,8 +432,8 @@ class FurPalsDrawer extends StatelessWidget {
                       ),
                     ),
                   ),
-                ]),
-              )));
+                ],
+              );
             },
           ),
         ),
@@ -552,29 +441,19 @@ class FurPalsDrawer extends StatelessWidget {
     );
   }
 
-  Widget _pill(
-    BuildContext context,
-    IconData icon,
-    String label,
-    VoidCallback onTap,
-  ) {
+  Widget _pill(BuildContext context, IconData icon, String label, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          width: double.infinity,
-          height: 50,
+          width: double.infinity, height: 50,
           padding: const EdgeInsets.symmetric(horizontal: 20),
           decoration: BoxDecoration(
             color: const Color(0xFFFBEDE4),
             borderRadius: BorderRadius.circular(50),
             boxShadow: const [
-              BoxShadow(
-                color: Colors.grey,
-                blurRadius: 3,
-                offset: Offset(0, 3),
-              ),
+              BoxShadow(color: Colors.grey, blurRadius: 3, offset: Offset(0, 3)),
             ],
           ),
           child: Row(
@@ -586,9 +465,7 @@ class FurPalsDrawer extends StatelessWidget {
                   label,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.baloo2(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF4A3728),
+                    fontSize: 15, fontWeight: FontWeight.w700, color: const Color(0xFF4A3728),
                   ),
                 ),
               ),
@@ -600,7 +477,6 @@ class FurPalsDrawer extends StatelessWidget {
   }
 }
 
-//user delete own post
 void _showPostOptionsMenu(
   BuildContext context,
   String username,
@@ -624,12 +500,8 @@ void _showPostOptionsMenu(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: FurPalsColors.blush,
-              borderRadius: BorderRadius.circular(2),
-            ),
+            width: 40, height: 4,
+            decoration: BoxDecoration(color: FurPalsColors.blush, borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 20),
           _PostOptionTile(
@@ -643,29 +515,21 @@ void _showPostOptionsMenu(
                 await _saveMediaToGallery(mediaURL, mediaType);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(
-                      'Media saved to gallery!',
-                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                    ),
+                    content: Text('Media saved to gallery!',
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                     backgroundColor: FurPalsColors.green,
                     behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 );
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(
-                      'No media to save.',
-                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                    ),
+                    content: Text('No media to save.',
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                     backgroundColor: FurPalsColors.heartRed,
                     behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 );
               }
@@ -727,33 +591,20 @@ class _PostOptionTile extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           boxShadow: const [
-            BoxShadow(
-              color: FurPalsColors.shadow,
-              blurRadius: 6,
-              offset: Offset(0, 2),
-            ),
+            BoxShadow(color: FurPalsColors.shadow, blurRadius: 6, offset: Offset(0, 2)),
           ],
         ),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: iconBg,
-                borderRadius: BorderRadius.circular(12),
-              ),
+              width: 40, height: 40,
+              decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
               child: Icon(icon, color: iconColor, size: 20),
             ),
             const SizedBox(width: 14),
-            Text(
-              label,
-              style: GoogleFonts.nunito(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: FurPalsColors.textDark,
-              ),
-            ),
+            Text(label,
+                style: GoogleFonts.nunito(
+                    fontSize: 15, fontWeight: FontWeight.w700, color: FurPalsColors.textDark)),
           ],
         ),
       ),
@@ -767,53 +618,33 @@ void _showReportDialog(BuildContext context, String username) {
     builder: (_) => AlertDialog(
       backgroundColor: FurPalsColors.warmWhite,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Text(
-        'Report Post',
-        style: GoogleFonts.baloo2(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: FurPalsColors.textDark,
-        ),
-      ),
+      title: Text('Report Post',
+          style: GoogleFonts.baloo2(
+              fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
       content: Text(
-        "Are you sure you want to report $username's post? We'll review it shortly.",
-        style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid),
-      ),
+          "Are you sure you want to report $username's post? We'll review it shortly.",
+          style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid)),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Cancel',
-            style: GoogleFonts.nunito(
-              fontWeight: FontWeight.w700,
-              color: FurPalsColors.textMid,
-            ),
-          ),
+          child: Text('Cancel',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
         ),
         TextButton(
           onPressed: () {
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(
-                  'Report submitted. Thank you!',
-                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                ),
+                content: Text('Report submitted. Thank you!',
+                    style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                 backgroundColor: FurPalsColors.heartRed,
                 behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             );
           },
-          child: Text(
-            'Report',
-            style: GoogleFonts.nunito(
-              fontWeight: FontWeight.w800,
-              color: FurPalsColors.heartRed,
-            ),
-          ),
+          child: Text('Report',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w800, color: FurPalsColors.heartRed)),
         ),
       ],
     ),
@@ -826,82 +657,51 @@ void _showDeleteConfirmation(BuildContext context, String postId) {
     builder: (dialogContext) => AlertDialog(
       backgroundColor: FurPalsColors.warmWhite,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Text(
-        'Delete Post?',
-        style: GoogleFonts.baloo2(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: FurPalsColors.textDark,
-        ),
-      ),
-      content: Text(
-        "This action can't be undone.",
-        style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid),
-      ),
+      title: Text('Delete Post?',
+          style: GoogleFonts.baloo2(
+              fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
+      content: Text("This action can't be undone.",
+          style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid)),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext),
-          child: Text(
-            'Cancel',
-            style: GoogleFonts.nunito(
-              fontWeight: FontWeight.w700,
-              color: FurPalsColors.textMid,
-            ),
-          ),
+          child: Text('Cancel',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
         ),
         TextButton(
           onPressed: () async {
             Navigator.pop(dialogContext);
             try {
-              await FirebaseFirestore.instance
-                  .collection('posts')
-                  .doc(postId)
-                  .delete();
-
+              await FirebaseFirestore.instance.collection('posts').doc(postId).delete();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(
-                    'Post deleted. 🐾',
-                    style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                  ),
+                  content: Text('Post deleted. 🐾',
+                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                   backgroundColor: FurPalsColors.heartRed,
                   behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               );
             } catch (e) {
-              print('Delete error: $e');
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(
-                    'Failed to delete post.',
-                    style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                  ),
+                  content: Text('Failed to delete post.',
+                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                   backgroundColor: FurPalsColors.heartRed,
                   behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               );
             }
           },
-          child: Text(
-            'Delete',
-            style: GoogleFonts.nunito(
-              fontWeight: FontWeight.w800,
-              color: FurPalsColors.heartRed,
-            ),
-          ),
+          child: Text('Delete',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w800, color: FurPalsColors.heartRed)),
         ),
       ],
     ),
   );
 }
 
-//show likesand comments //likeCount //commentCount
 void _showWhoLikedModal(BuildContext context, String postId, int likeCount) {
   showModalBottomSheet(
     context: context,
@@ -920,38 +720,24 @@ void _showWhoLikedModal(BuildContext context, String postId, int likeCount) {
           children: [
             const SizedBox(height: 12),
             Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: FurPalsColors.blush,
-                borderRadius: BorderRadius.circular(2),
-              ),
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: FurPalsColors.blush, borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.favorite_rounded,
-                    color: FurPalsColors.heartRed,
-                    size: 20,
-                  ),
+                  const Icon(Icons.favorite_rounded, color: FurPalsColors.heartRed, size: 20),
                   const SizedBox(width: 8),
-                  Text(
-                    '${_formatCount(likeCount)} Likes',
-                    style: GoogleFonts.baloo2(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: FurPalsColors.textDark,
-                    ),
-                  ),
+                  Text('${_formatCount(likeCount)} Likes',
+                      style: GoogleFonts.baloo2(
+                          fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
                 ],
               ),
             ),
             const SizedBox(height: 12),
             const Divider(height: 1, color: Color(0xFFF0E4DC)),
-            // Stream from Firestore: posts/{postId}/likes
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
@@ -962,30 +748,18 @@ void _showWhoLikedModal(BuildContext context, String postId, int likeCount) {
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: FurPalsColors.pink,
-                      ),
-                    );
+                    return const Center(child: CircularProgressIndicator(color: FurPalsColors.pink));
                   }
                   final likers = snapshot.data!.docs;
                   if (likers.isEmpty) {
                     return Center(
-                      child: Text(
-                        'No likes yet 🐾',
-                        style: GoogleFonts.nunito(
-                          color: FurPalsColors.textMid,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      child: Text('No likes yet 🐾',
+                          style: GoogleFonts.nunito(color: FurPalsColors.textMid, fontWeight: FontWeight.w600)),
                     );
                   }
                   return ListView.separated(
                     controller: scrollController,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     itemCount: likers.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 4),
                     itemBuilder: (_, i) {
@@ -995,54 +769,28 @@ void _showWhoLikedModal(BuildContext context, String postId, int likeCount) {
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: Container(
-                          width: 46,
-                          height: 46,
+                          width: 46, height: 46,
                           decoration: const BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: [
-                                FurPalsColors.blush,
-                                FurPalsColors.peach,
-                              ],
-                            ),
+                            gradient: LinearGradient(colors: [FurPalsColors.blush, FurPalsColors.peach]),
                           ),
-                          child: const Center(
-                            child: Text('🐾', style: TextStyle(fontSize: 22)),
-                          ),
+                          child: const Center(child: Text('🐾', style: TextStyle(fontSize: 22))),
                         ),
-                        title: Text(
-                          displayName,
-                          style: GoogleFonts.baloo2(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: FurPalsColors.textDark,
-                          ),
-                        ),
-                        subtitle: Text(
-                          '@$uname',
-                          style: GoogleFonts.nunito(
-                            fontSize: 12,
-                            color: FurPalsColors.textMid,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        title: Text(displayName,
+                            style: GoogleFonts.baloo2(
+                                fontSize: 14, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
+                        subtitle: Text('@$uname',
+                            style: GoogleFonts.nunito(
+                                fontSize: 12, color: FurPalsColors.textMid, fontWeight: FontWeight.w600)),
                         trailing: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 6,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                           decoration: BoxDecoration(
                             color: FurPalsColors.blush,
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Text(
-                            'Follow',
-                            style: GoogleFonts.nunito(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: FurPalsColors.pink,
-                            ),
-                          ),
+                          child: Text('Follow',
+                              style: GoogleFonts.nunito(
+                                  fontSize: 12, fontWeight: FontWeight.w800, color: FurPalsColors.pink)),
                         ),
                       );
                     },
@@ -1056,6 +804,7 @@ void _showWhoLikedModal(BuildContext context, String postId, int likeCount) {
     ),
   );
 }
+
 void _showCommentsModal(BuildContext context, String postId, int commentCount) async {
   final postDoc = await FirebaseFirestore.instance.collection('posts').doc(postId).get();
   final postOwnerId = postDoc.data()?['userId'] ?? '';
@@ -1083,6 +832,10 @@ class _CommentsModalState extends State<_CommentsModal> {
   bool _sending = false;
   late int _commentCount;
 
+  String? _replyingToUsername;
+  String? _replyingToCommentId;
+  String? _editingCommentId;
+
   @override
   void initState() {
     super.initState();
@@ -1105,12 +858,12 @@ class _CommentsModalState extends State<_CommentsModal> {
 
   Future<void> _deleteComment(String commentId) async {
     try {
-      final commentRef = FirebaseFirestore.instance
+      await FirebaseFirestore.instance
           .collection('posts')
           .doc(widget.postId)
           .collection('comments')
-          .doc(commentId);
-      await commentRef.delete();
+          .doc(commentId)
+          .delete();
       await FirebaseFirestore.instance
           .collection('posts')
           .doc(widget.postId)
@@ -1119,31 +872,23 @@ class _CommentsModalState extends State<_CommentsModal> {
         setState(() => _commentCount = (_commentCount - 1).clamp(0, 99999999));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Comment deleted.',
-              style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-            ),
+            content: Text('Comment deleted.',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
             backgroundColor: FurPalsColors.heartRed,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Unable to delete comment. Please try again.',
-              style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-            ),
+            content: Text('Unable to delete comment. Please try again.',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
             backgroundColor: FurPalsColors.heartRed,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -1156,45 +901,215 @@ class _CommentsModalState extends State<_CommentsModal> {
       builder: (dialogContext) => AlertDialog(
         backgroundColor: FurPalsColors.warmWhite,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Delete comment?',
-          style: GoogleFonts.baloo2(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: FurPalsColors.textDark,
-          ),
-        ),
-        content: Text(
-          'This will remove your comment permanently.',
-          style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid),
-        ),
+        title: Text('Delete comment?',
+            style: GoogleFonts.baloo2(
+                fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
+        content: Text('This will remove your comment permanently.',
+            style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.nunito(
-                fontWeight: FontWeight.w700,
-                color: FurPalsColors.textMid,
-              ),
-            ),
+            child: Text('Cancel',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
           ),
           TextButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
               await _deleteComment(commentId);
             },
-            child: Text(
-              'Delete',
-              style: GoogleFonts.nunito(
-                fontWeight: FontWeight.w700,
-                color: FurPalsColors.heartRed,
-              ),
-            ),
+            child: Text('Delete',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: FurPalsColors.heartRed)),
           ),
         ],
       ),
     );
+  }
+
+  void _startEdit(String commentId, String currentText) {
+    setState(() {
+      _editingCommentId = commentId;
+      _replyingToUsername = null;
+      _replyingToCommentId = null;
+      _commentCtrl.text = currentText;
+    });
+  }
+
+  Future<void> _saveEdit() async {
+    final text = _commentCtrl.text.trim();
+    final commentId = _editingCommentId;
+    if (text.isEmpty || commentId == null) return;
+    setState(() => _sending = true);
+    try {
+      await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(widget.postId)
+          .collection('comments')
+          .doc(commentId)
+          .update({'text': text, 'editedAt': FieldValue.serverTimestamp()});
+      if (mounted) {
+        setState(() {
+          _editingCommentId = null;
+          _commentCtrl.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Comment updated! 🐾',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+            backgroundColor: FurPalsColors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Edit comment error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update: $e',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+            backgroundColor: FurPalsColors.heartRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    }
+    if (mounted) setState(() => _sending = false);
+  }
+
+  void _startReply(String commentId, String username) {
+    setState(() {
+      _replyingToCommentId = commentId;
+      _replyingToUsername = username;
+      _editingCommentId = null;
+      _commentCtrl.clear();
+    });
+  }
+
+  Future<void> _toggleCommentLike(String commentId, bool currentlyLiked, int currentCount) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return;
+    final likeRef = FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.postId)
+        .collection('comments')
+        .doc(commentId)
+        .collection('likes')
+        .doc(uid);
+    final commentRef = FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.postId)
+        .collection('comments')
+        .doc(commentId);
+    if (currentlyLiked) {
+      await likeRef.delete();
+      await commentRef.update({'likeCount': FieldValue.increment(-1)});
+    } else {
+      await likeRef.set({'uid': uid, 'createdAt': FieldValue.serverTimestamp()});
+      await commentRef.update({'likeCount': FieldValue.increment(1)});
+    }
+  }
+
+  void _reportComment(String commentId, String username) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: FurPalsColors.warmWhite,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Report Comment',
+            style: GoogleFonts.baloo2(
+                fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
+        content: Text(
+            "Are you sure you want to report @$username's comment? We'll review it shortly.",
+            style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Report submitted. Thank you!',
+                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                  backgroundColor: FurPalsColors.heartRed,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              );
+            },
+            child: Text('Report',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w800, color: FurPalsColors.heartRed)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendComment() async {
+    final text = _commentCtrl.text.trim();
+    if (text.isEmpty) return;
+
+    if (_editingCommentId != null) {
+      await _saveEdit();
+      return;
+    }
+
+    setState(() => _sending = true);
+    try {
+      final profile = await _getCurrentUserProfile();
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final uname = profile['username'] ?? '';
+      final fullName = profile['fullName'] ?? '';
+
+      final ref = FirebaseFirestore.instance
+          .collection('posts')
+          .doc(widget.postId)
+          .collection('comments')
+          .doc();
+
+      await ref.set({
+        'commentId': ref.id,
+        'userId': uid,
+        'username': uname,
+        'fullName': fullName,
+        'text': text,
+        'likeCount': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+        'replyToCommentId': _replyingToCommentId,
+        'replyToUsername': _replyingToUsername,
+      });
+
+      await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(widget.postId)
+          .update({'commentCount': FieldValue.increment(1)});
+
+      await _createNotification(widget.postOwnerId, uid, 'comment', widget.postId, commentText: text);
+
+      if (mounted) {
+        setState(() {
+          _commentCount++;
+          _commentCtrl.clear();
+          _replyingToUsername = null;
+          _replyingToCommentId = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Comment posted! 🐾',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+            backgroundColor: FurPalsColors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _sending = false);
   }
 
   @override
@@ -1212,32 +1127,19 @@ class _CommentsModalState extends State<_CommentsModal> {
           children: [
             const SizedBox(height: 12),
             Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: FurPalsColors.blush,
-                borderRadius: BorderRadius.circular(2),
-              ),
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: FurPalsColors.blush, borderRadius: BorderRadius.circular(2)),
             ),
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.chat_bubble_rounded,
-                    color: FurPalsColors.pink,
-                    size: 20,
-                  ),
+                  const Icon(Icons.chat_bubble_rounded, color: FurPalsColors.pink, size: 20),
                   const SizedBox(width: 8),
-                  Text(
-                    '${_formatCount(_commentCount)} Comments',
-                    style: GoogleFonts.baloo2(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: FurPalsColors.textDark,
-                    ),
-                  ),
+                  Text('${_formatCount(_commentCount)} Comments',
+                      style: GoogleFonts.baloo2(
+                          fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
                 ],
               ),
             ),
@@ -1253,30 +1155,19 @@ class _CommentsModalState extends State<_CommentsModal> {
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: FurPalsColors.pink,
-                      ),
-                    );
+                    return const Center(child: CircularProgressIndicator(color: FurPalsColors.pink));
                   }
                   final comments = snapshot.data!.docs;
                   if (comments.isEmpty) {
                     return Center(
-                      child: Text(
-                        'No comments yet. Be the first! 🐾',
-                        style: GoogleFonts.nunito(
-                          color: FurPalsColors.textMid,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      child: Text('No comments yet. Be the first! 🐾',
+                          style: GoogleFonts.nunito(
+                              color: FurPalsColors.textMid, fontWeight: FontWeight.w600)),
                     );
                   }
                   return ListView.separated(
                     controller: scrollController,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     itemCount: comments.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (_, i) {
@@ -1287,86 +1178,26 @@ class _CommentsModalState extends State<_CommentsModal> {
                       final uname = c['username'] ?? '';
                       final text = c['text'] ?? '';
                       final ts = c['createdAt'] as Timestamp?;
+                      final editedAt = c['editedAt'] as Timestamp?;
                       final timeAgo = ts != null ? _timeAgo(ts.toDate()) : '';
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 38,
-                            height: 38,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: [
-                                  FurPalsColors.mint,
-                                  FurPalsColors.lavender,
-                                ],
-                              ),
-                            ),
-                            child: const Center(
-                              child: Text('🐾', style: TextStyle(fontSize: 18)),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      '@$uname',
-                                      style: GoogleFonts.nunito(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: FurPalsColors.textDark,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      timeAgo,
-                                      style: GoogleFonts.nunito(
-                                        fontSize: 10,
-                                        color: FurPalsColors.textMid,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: FurPalsColors.warmWhite,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    text,
-                                    style: GoogleFonts.nunito(
-                                      fontSize: 13,
-                                      color: FurPalsColors.textDark,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (isMine)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 8, top: 4),
-                              child: GestureDetector(
-                                onTap: () => _confirmDelete(commentId),
-                                child: const Icon(
-                                  Icons.delete_outline,
-                                  size: 18,
-                                  color: FurPalsColors.heartRed,
-                                ),
-                              ),
-                            ),
-                        ],
+                      final likeCount = (c['likeCount'] as num?)?.toInt() ?? 0;
+                      final replyToUsername = c['replyToUsername'] as String?;
+
+                      return _CommentTile(
+                        commentId: commentId,
+                        uname: uname,
+                        text: text,
+                        timeAgo: timeAgo,
+                        isEdited: editedAt != null,
+                        likeCount: likeCount,
+                        replyToUsername: replyToUsername,
+                        isMine: isMine,
+                        postId: widget.postId,
+                        onEdit: () => _startEdit(commentId, text),
+                        onDelete: () => _confirmDelete(commentId),
+                        onReply: () => _startReply(commentId, uname),
+                        onReport: () => _reportComment(commentId, uname),
+                        onLikeToggle: (liked, count) => _toggleCommentLike(commentId, liked, count),
                       );
                     },
                   );
@@ -1374,148 +1205,95 @@ class _CommentsModalState extends State<_CommentsModal> {
               ),
             ),
             const Divider(height: 1, color: Color(0xFFF0E4DC)),
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                10,
-                16,
-                MediaQuery.of(context).viewInsets.bottom + 16,
+            if (_replyingToUsername != null || _editingCommentId != null)
+              Container(
+                color: FurPalsColors.warmWhite,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      _editingCommentId != null ? Icons.edit_rounded : Icons.reply_rounded,
+                      size: 14, color: FurPalsColors.pink,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _editingCommentId != null
+                            ? 'Editing your comment'
+                            : 'Replying to @$_replyingToUsername',
+                        style: GoogleFonts.nunito(
+                            fontSize: 12, fontWeight: FontWeight.w700, color: FurPalsColors.textMid),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() {
+                        _replyingToUsername = null;
+                        _replyingToCommentId = null;
+                        _editingCommentId = null;
+                        _commentCtrl.clear();
+                      }),
+                      child: const Icon(Icons.close_rounded, size: 16, color: FurPalsColors.textMid),
+                    ),
+                  ],
+                ),
               ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 10, 16, MediaQuery.of(context).viewInsets.bottom + 16),
               child: Row(
                 children: [
                   Container(
-                    width: 36,
-                    height: 36,
+                    width: 36, height: 36,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [FurPalsColors.blush, FurPalsColors.peach],
-                      ),
+                      gradient: LinearGradient(colors: [FurPalsColors.blush, FurPalsColors.peach]),
                     ),
-                    child: const Center(
-                      child: Text('🐾', style: TextStyle(fontSize: 18)),
-                    ),
+                    child: const Center(child: Text('🐾', style: TextStyle(fontSize: 18))),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 4,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                       decoration: BoxDecoration(
                         color: FurPalsColors.warmWhite,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: const Color(0xFFF0E4DC),
-                          width: 1.5,
-                        ),
+                        border: Border.all(color: const Color(0xFFF0E4DC), width: 1.5),
                       ),
                       child: TextField(
                         controller: _commentCtrl,
                         decoration: InputDecoration(
-                          hintText: 'Add a comment...',
-                          hintStyle: GoogleFonts.nunito(
-                            color: FurPalsColors.textSoft,
-                            fontSize: 13,
-                          ),
+                          hintText: _editingCommentId != null
+                              ? 'Edit your comment...'
+                              : _replyingToUsername != null
+                                  ? 'Reply to @$_replyingToUsername...'
+                                  : 'Add a comment...',
+                          hintStyle: GoogleFonts.nunito(color: FurPalsColors.textSoft, fontSize: 13),
                           border: InputBorder.none,
                           isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 8,
-                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
                         ),
                         style: GoogleFonts.nunito(
-                          fontSize: 13,
-                          color: FurPalsColors.black100,
-                          fontWeight: FontWeight.w600,
-                        ),
+                            fontSize: 13, color: FurPalsColors.black100, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: _sending
-                        ? null
-                        : () async {
-                            final text = _commentCtrl.text.trim();
-                            if (text.isEmpty) return;
-                            setState(() => _sending = true);
-                            try {
-                              final profile = await _getCurrentUserProfile();
-                              final uid =
-                                  FirebaseAuth.instance.currentUser?.uid ?? '';
-                              final uname = profile['username'] ?? '';
-                              final fullName = profile['fullName'] ?? '';
-                              final ref = FirebaseFirestore.instance
-                                  .collection('posts')
-                                  .doc(widget.postId)
-                                  .collection('comments')
-                                  .doc();
-
-                              await ref.set({
-                                'commentId': ref.id,
-                                'userId': uid,
-                                'username': uname,
-                                'fullName': fullName,
-                                'text': text,
-                                'createdAt': FieldValue.serverTimestamp(),
-                              });
-
-                              await FirebaseFirestore.instance
-                                  .collection('posts')
-                                  .doc(widget.postId)
-                                  .update({
-                                    'commentCount': FieldValue.increment(1),
-                                  });
-
-                              await _createNotification(widget.postOwnerId, uid, 'comment', widget.postId, commentText: text);
-
-                              if (mounted) {
-                                setState(() {
-                                  _commentCount++;
-                                  _commentCtrl.clear();
-                                });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Comment posted! 🐾',
-                                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                                    ),
-                                    backgroundColor: FurPalsColors.green,
-                                    behavior: SnackBarBehavior.floating,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                );
-                              }
-                            } catch (_) {
-                              // ignore error or show message
-                            }
-                            setState(() => _sending = false);
-                          },
+                    onTap: _sending ? null : _sendComment,
                     child: Container(
-                      width: 38,
-                      height: 38,
+                      width: 38, height: 38,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [FurPalsColors.pink, FurPalsColors.pinkLight],
-                        ),
+                            colors: [FurPalsColors.pink, FurPalsColors.pinkLight]),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: _sending
                           ? const Padding(
                               padding: EdgeInsets.all(10),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
-                          : const Icon(
-                              Icons.send_rounded,
-                              color: Colors.white,
-                              size: 18,
+                          : Icon(
+                              _editingCommentId != null ? Icons.check_rounded : Icons.send_rounded,
+                              color: Colors.white, size: 18,
                             ),
                     ),
                   ),
@@ -1529,7 +1307,213 @@ class _CommentsModalState extends State<_CommentsModal> {
   }
 }
 
-/// Returns a human-readable time ago string like "2m", "3h", "1d"
+class _CommentTile extends StatefulWidget {
+  final String commentId;
+  final String uname;
+  final String text;
+  final String timeAgo;
+  final bool isEdited;
+  final int likeCount;
+  final String? replyToUsername;
+  final bool isMine;
+  final String postId;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onReply;
+  final VoidCallback onReport;
+  final void Function(bool liked, int count) onLikeToggle;
+
+  const _CommentTile({
+    required this.commentId,
+    required this.uname,
+    required this.text,
+    required this.timeAgo,
+    required this.isEdited,
+    required this.likeCount,
+    required this.replyToUsername,
+    required this.isMine,
+    required this.postId,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onReply,
+    required this.onReport,
+    required this.onLikeToggle,
+  });
+
+  @override
+  State<_CommentTile> createState() => _CommentTileState();
+}
+
+class _CommentTileState extends State<_CommentTile> {
+  bool _liked = false;
+  late int _likeCount;
+
+  @override
+  void initState() {
+    super.initState();
+    _likeCount = widget.likeCount;
+    _checkLiked();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CommentTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.likeCount != oldWidget.likeCount) {
+      setState(() => _likeCount = widget.likeCount);
+    }
+  }
+
+  Future<void> _checkLiked() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return;
+    final doc = await FirebaseFirestore.instance
+        .collection('posts')
+        .doc(widget.postId)
+        .collection('comments')
+        .doc(widget.commentId)
+        .collection('likes')
+        .doc(uid)
+        .get();
+    if (mounted) setState(() => _liked = doc.exists);
+  }
+
+  void _handleLike() {
+    setState(() {
+      if (_liked) {
+        _liked = false;
+        _likeCount = (_likeCount - 1).clamp(0, 99999999);
+      } else {
+        _liked = true;
+        _likeCount++;
+      }
+    });
+    widget.onLikeToggle(_liked, _likeCount);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38, height: 38,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(colors: [FurPalsColors.mint, FurPalsColors.lavender]),
+          ),
+          child: const Center(child: Text('🐾', style: TextStyle(fontSize: 18))),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('@${widget.uname}',
+                      style: GoogleFonts.nunito(
+                          fontSize: 12, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
+                  const SizedBox(width: 6),
+                  Text(widget.timeAgo,
+                      style: GoogleFonts.nunito(fontSize: 10, color: FurPalsColors.textMid)),
+                  if (widget.isEdited) ...[
+                    const SizedBox(width: 4),
+                    Text('· edited',
+                        style: GoogleFonts.nunito(
+                            fontSize: 10,
+                            color: FurPalsColors.textMid,
+                            fontStyle: FontStyle.italic)),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 2),
+              if (widget.replyToUsername != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text('@${widget.replyToUsername}',
+                      style: GoogleFonts.nunito(
+                          fontSize: 12, fontWeight: FontWeight.w700, color: FurPalsColors.pink)),
+                ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: FurPalsColors.warmWhite,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(widget.text,
+                    style: GoogleFonts.nunito(
+                        fontSize: 13, color: FurPalsColors.textDark, fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  if (!widget.isMine) ...[
+                    GestureDetector(
+                      onTap: _handleLike,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _liked ? Icons.favorite_rounded : Icons.favorite_outline,
+                            size: 13, color: FurPalsColors.heartRed,
+                          ),
+                          if (_likeCount > 0) ...[
+                            const SizedBox(width: 3),
+                            Text(_likeCount.toString(),
+                                style: GoogleFonts.nunito(
+                                    fontSize: 11, fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    GestureDetector(
+                      onTap: widget.onReply,
+                      child: Text('Reply',
+                          style: GoogleFonts.nunito(
+                              fontSize: 11, fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
+                    ),
+                    const SizedBox(width: 14),
+                    GestureDetector(
+                      onTap: widget.onReport,
+                      child: Text('Report',
+                          style: GoogleFonts.nunito(
+                              fontSize: 11, fontWeight: FontWeight.w700, color: FurPalsColors.heartRed)),
+                    ),
+                  ],
+                  if (widget.isMine) ...[
+                    if (_likeCount > 0) ...[
+                      const Icon(Icons.favorite_rounded, size: 13, color: FurPalsColors.heartRed),
+                      const SizedBox(width: 3),
+                      Text(_likeCount.toString(),
+                          style: GoogleFonts.nunito(
+                              fontSize: 11, fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
+                      const SizedBox(width: 14),
+                    ],
+                    GestureDetector(
+                      onTap: widget.onEdit,
+                      child: Text('Edit',
+                          style: GoogleFonts.nunito(
+                              fontSize: 11, fontWeight: FontWeight.w700, color: FurPalsColors.blue)),
+                    ),
+                    const SizedBox(width: 14),
+                    GestureDetector(
+                      onTap: widget.onDelete,
+                      child: Text('Delete',
+                          style: GoogleFonts.nunito(
+                              fontSize: 11, fontWeight: FontWeight.w700, color: FurPalsColors.heartRed)),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 String _timeAgo(DateTime dt) {
   final diff = DateTime.now().difference(dt);
   if (diff.inMinutes < 1) return 'now';
@@ -1538,8 +1522,6 @@ String _timeAgo(DateTime dt) {
   return '${diff.inDays}d';
 }
 
-
-//share button
 void _showShareModal(BuildContext context, String username) {
   showModalBottomSheet(
     context: context,
@@ -1561,60 +1543,20 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
   String _audience = 'Feed';
   String _privacy = 'Only me';
 
-  static const _audienceOptions = ['Feed', 'Friends', 'Public'];
+  static const _audienceOptions = ['Feed', 'Group', 'Lost and Found'];
   static const _privacyOptions = ['Only me', 'Friends', 'Everyone'];
 
   final List<Map<String, dynamic>> _platforms = [
-    {
-      'label': 'WhatsApp',
-      'color': const Color(0xFF93E67F),
-      'icon': Icons.chat_rounded,
-    },
-    {
-      'label': 'Messenger',
-      'color': const Color(0xFF1163EC),
-      'icon': Icons.send_rounded,
-    },
-    {
-      'label': 'Facebook',
-      'color': const Color(0xFF1877F2),
-      'icon': Icons.facebook_sharp,
-    },
-    {
-      'label': 'Threads',
-      'color': const Color(0xFF000000),
-      'icon': Icons.alternate_email_rounded,
-    },
-    {
-      'label': 'X',
-      'color': const Color(0xFF000000),
-      'icon': Icons.close_rounded,
-    },
-    {
-      'label': 'Instagram',
-      'color': const Color(0xFFF4738A),
-      'icon': Icons.camera_alt_rounded,
-    },
-    {
-      'label': 'IG Story',
-      'color': const Color(0xFFF4738A),
-      'icon': Icons.add_circle_outline,
-    },
-    {
-      'label': 'Copy Link',
-      'color': const Color(0xFFBBB2CF),
-      'icon': Icons.link_rounded,
-    },
-    {
-      'label': 'SMS',
-      'color': const Color(0xFFD4F0E4),
-      'icon': Icons.sms_rounded,
-    },
-    {
-      'label': 'Email',
-      'color': const Color(0xFFFF383C),
-      'icon': Icons.email_rounded,
-    },
+    {'label': 'WhatsApp', 'color': const Color(0xFF93E67F), 'icon': Icons.chat_rounded},
+    {'label': 'Messenger', 'color': const Color(0xFF1163EC), 'icon': Icons.send_rounded},
+    {'label': 'Facebook', 'color': const Color(0xFF1877F2), 'icon': Icons.facebook_sharp},
+    {'label': 'Threads', 'color': const Color(0xFF000000), 'icon': Icons.alternate_email_rounded},
+    {'label': 'X', 'color': const Color(0xFF000000), 'icon': Icons.close_rounded},
+    {'label': 'Instagram', 'color': const Color(0xFFF4738A), 'icon': Icons.camera_alt_rounded},
+    {'label': 'IG Story', 'color': const Color(0xFFF4738A), 'icon': Icons.add_circle_outline},
+    {'label': 'Copy Link', 'color': const Color(0xFFBBB2CF), 'icon': Icons.link_rounded},
+    {'label': 'SMS', 'color': const Color(0xFFD4F0E4), 'icon': Icons.sms_rounded},
+    {'label': 'Email', 'color': const Color(0xFFFF383C), 'icon': Icons.email_rounded},
   ];
 
   @override
@@ -1631,12 +1573,8 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
           const SizedBox(height: 12),
           Center(
             child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: FurPalsColors.blush,
-                borderRadius: BorderRadius.circular(2),
-              ),
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: FurPalsColors.blush, borderRadius: BorderRadius.circular(2)),
             ),
           ),
           const SizedBox(height: 14),
@@ -1645,30 +1583,20 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
             child: Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 44, height: 44,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [FurPalsColors.blush, FurPalsColors.peach],
-                    ),
+                    gradient: LinearGradient(colors: [FurPalsColors.blush, FurPalsColors.peach]),
                   ),
-                  child: const Center(
-                    child: Text('🐾', style: TextStyle(fontSize: 22)),
-                  ),
+                  child: const Center(child: Text('🐾', style: TextStyle(fontSize: 22))),
                 ),
                 const SizedBox(width: 10),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.username,
-                      style: GoogleFonts.baloo2(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: FurPalsColors.textDark,
-                      ),
-                    ),
+                    Text(widget.username,
+                        style: GoogleFonts.baloo2(
+                            fontSize: 15, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
                     const SizedBox(height: 4),
                     Row(
                       children: [
@@ -1698,17 +1626,11 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
             child: TextField(
               maxLines: 2,
               style: GoogleFonts.nunito(
-                fontSize: 14,
-                color: FurPalsColors.textDark,
-                fontWeight: FontWeight.w500,
-              ),
+                  fontSize: 14, color: FurPalsColors.textDark, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 hintText: 'Say something...',
                 hintStyle: GoogleFonts.nunito(
-                  fontSize: 14,
-                  color: FurPalsColors.textSoft,
-                  fontWeight: FontWeight.w500,
-                ),
+                    fontSize: 14, color: FurPalsColors.textSoft, fontWeight: FontWeight.w500),
                 border: InputBorder.none,
                 isDense: true,
               ),
@@ -1723,35 +1645,22 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(
-                        'Post shared! 🐾',
-                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                      ),
+                      content: Text('Post shared! 🐾',
+                          style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                       backgroundColor: FurPalsColors.blue,
                       behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 10,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
                   decoration: BoxDecoration(
-                    color: FurPalsColors.blue,
-                    borderRadius: BorderRadius.circular(8),
+                    color: FurPalsColors.blue, borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    'Share now',
-                    style: GoogleFonts.nunito(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: Text('Share now',
+                      style: GoogleFonts.nunito(
+                          fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white)),
                 ),
               ),
             ),
@@ -1773,10 +1682,7 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
     );
   }
 
-  Widget _buildPlatformRow(
-    BuildContext context,
-    List<Map<String, dynamic>> row,
-  ) {
+  Widget _buildPlatformRow(BuildContext context, List<Map<String, dynamic>> row) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: row.map((p) {
@@ -1784,21 +1690,16 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
         final color = p['color'] as Color;
         final icon = p['icon'] as IconData;
         final iconColor = (label == 'SMS') ? FurPalsColors.green : Colors.white;
-
         return GestureDetector(
           onTap: () {
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(
-                  'Sharing via $label...',
-                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                ),
+                content: Text('Sharing via $label...',
+                    style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                 backgroundColor: color,
                 behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             );
           },
@@ -1808,26 +1709,17 @@ class _ShareFullSheetState extends State<_ShareFullSheet> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
+                  width: 50, height: 50,
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
                   child: Icon(icon, color: iconColor, size: 30),
                 ),
                 const SizedBox(height: 10),
-                Text(
-                  label,
-                  style: GoogleFonts.nunito(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: FurPalsColors.textDark,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                Text(label,
+                    style: GoogleFonts.nunito(
+                        fontSize: 10, fontWeight: FontWeight.w700, color: FurPalsColors.textDark),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
@@ -1859,29 +1751,16 @@ class _ShareDropdownPill extends StatelessWidget {
         final picked = await showMenu<String>(
           context: context,
           color: FurPalsColors.warmWhite,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           position: RelativeRect.fromLTRB(
-            offset.dx,
-            offset.dy + box.size.height + 4,
-            offset.dx + 120,
-            0,
-          ),
+              offset.dx, offset.dy + box.size.height + 4, offset.dx + 120, 0),
           items: options
-              .map(
-                (o) => PopupMenuItem(
-                  value: o,
-                  child: Text(
-                    o,
-                    style: GoogleFonts.nunito(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: FurPalsColors.textDark,
-                    ),
-                  ),
-                ),
-              )
+              .map((o) => PopupMenuItem(
+                    value: o,
+                    child: Text(o,
+                        style: GoogleFonts.nunito(
+                            fontSize: 13, fontWeight: FontWeight.w700, color: FurPalsColors.textDark)),
+                  ))
               .toList(),
         );
         if (picked != null) onChanged(picked);
@@ -1898,20 +1777,11 @@ class _ShareDropdownPill extends StatelessWidget {
           children: [
             Icon(icon, size: 12, color: FurPalsColors.textMid),
             const SizedBox(width: 4),
-            Text(
-              value,
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: FurPalsColors.textDark,
-              ),
-            ),
+            Text(value,
+                style: GoogleFonts.nunito(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: FurPalsColors.textDark)),
             const SizedBox(width: 3),
-            const Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 14,
-              color: FurPalsColors.textMid,
-            ),
+            const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: FurPalsColors.textMid),
           ],
         ),
       ),
@@ -1919,9 +1789,6 @@ class _ShareDropdownPill extends StatelessWidget {
   }
 }
 
-
-
-//posts 
 class HomeBody extends StatefulWidget {
   final ValueChanged<int> onNavTap;
   const HomeBody({super.key, required this.onNavTap});
@@ -1933,7 +1800,6 @@ class HomeBody extends StatefulWidget {
 class _HomeBodyState extends State<HomeBody> {
   bool _hasNewNotif = true;
 
-  // Active users still static for now (requires a followers system)
   final List<Map<String, dynamic>> _activeUsers = [
     {'emoji': '🐶', 'label': 'Buddy', 'online': true},
     {'emoji': '🐱', 'label': 'Luna', 'online': true},
@@ -1954,9 +1820,7 @@ class _HomeBodyState extends State<HomeBody> {
             _buildTopBar(context),
             Expanded(
               child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.45),
-                ),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.45)),
                 child: Column(
                   children: [
                     _buildActiveUsersRow(),
@@ -1972,7 +1836,6 @@ class _HomeBodyState extends State<HomeBody> {
     );
   }
 
-  // Top bar now reads the real username from Firebase Auth / Firestore
   Widget _buildTopBar(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     final displayName = user?.displayName ?? 'FurPals User';
@@ -1995,25 +1858,16 @@ class _HomeBodyState extends State<HomeBody> {
                 builder: (ctx) => GestureDetector(
                   onTap: () => Scaffold.of(ctx).openDrawer(),
                   child: Container(
-                    width: 40,
-                    height: 40,
+                    width: 40, height: 40,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: const [
-                        BoxShadow(
-                          color: FurPalsColors.shadow,
-                          blurRadius: 10,
-                          offset: Offset(0, 3),
-                        ),
+                        BoxShadow(color: FurPalsColors.shadow, blurRadius: 10, offset: Offset(0, 3)),
                       ],
                     ),
                     child: const Center(
-                      child: Icon(
-                        Icons.menu_rounded,
-                        size: 20,
-                        color: FurPalsColors.textDark,
-                      ),
+                      child: Icon(Icons.menu_rounded, size: 20, color: FurPalsColors.textDark),
                     ),
                   ),
                 ),
@@ -2022,15 +1876,16 @@ class _HomeBodyState extends State<HomeBody> {
               Expanded(
                 child: Row(
                   children: [
-                    Text(
-                      displayName,
-                      style: GoogleFonts.baloo2(
-                        fontSize: 25,
-                        fontWeight: FontWeight.w800,
-                        color: FurPalsColors.textDark,
+                    Flexible(
+                      child: Text(
+                        displayName,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: GoogleFonts.baloo2(
+                            fontSize: 25, fontWeight: FontWeight.w800, color: FurPalsColors.textDark),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 1),
                     const Text('🐾', style: TextStyle(fontSize: 18)),
                   ],
                 ),
@@ -2038,52 +1893,35 @@ class _HomeBodyState extends State<HomeBody> {
               GestureDetector(
                 onTap: () async {
                   await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const NotificationScreen()),
-                  );
+                      context, MaterialPageRoute(builder: (_) => const NotificationScreen()));
                 },
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
                     Container(
-                      width: 40,
-                      height: 40,
+                      width: 40, height: 40,
                       decoration: BoxDecoration(
                         color: FurPalsColors.warmWhite,
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x40F4738A),
-                            blurRadius: 12,
-                            offset: Offset(0, 4),
-                          ),
+                          BoxShadow(color: Color(0x40F4738A), blurRadius: 12, offset: Offset(0, 4)),
                         ],
                       ),
                       child: const Center(
-                        child: Icon(
-                          Icons.favorite_rounded,
-                          color: FurPalsColors.heartRed,
-                          size: 20,
-                        ),
+                        child: Icon(Icons.favorite_rounded, color: FurPalsColors.heartRed, size: 20),
                       ),
                     ),
                     if (hasUnread)
                       Positioned(
-                        top: -3,
-                        right: -3,
+                        top: -3, right: -3,
                         child: Container(
-                          width: 12,
-                          height: 12,
+                          width: 12, height: 12,
                           decoration: BoxDecoration(
                             color: FurPalsColors.heartRed,
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2),
                             boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x55E53935),
-                                blurRadius: 4,
-                                offset: Offset(0, 1),
-                              ),
+                              BoxShadow(color: Color(0x55E53935), blurRadius: 4, offset: Offset(0, 1)),
                             ],
                           ),
                         ),
@@ -2115,7 +1953,6 @@ class _HomeBodyState extends State<HomeBody> {
     final bool online = user['online'] as bool;
     final String emoji = user['emoji'] as String;
     final String label = user['label'] as String;
-
     return SizedBox(
       width: 64,
       child: Column(
@@ -2123,20 +1960,16 @@ class _HomeBodyState extends State<HomeBody> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 56,
-            height: 56,
+            width: 56, height: 56,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: online
-                  ? FurPalsColors.onlineGreen
-                  : FurPalsColors.offlineGray,
+              color: online ? FurPalsColors.onlineGreen : FurPalsColors.offlineGray,
               boxShadow: [
                 BoxShadow(
                   color: online
                       ? FurPalsColors.onlineGreen.withOpacity(0.28)
                       : FurPalsColors.offlineGray.withOpacity(0.18),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+                  blurRadius: 8, offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -2152,22 +1985,17 @@ class _HomeBodyState extends State<HomeBody> {
                       : [FurPalsColors.cream, FurPalsColors.warmWhite],
                 ),
               ),
-              child: Center(
-                child: Text(emoji, style: const TextStyle(fontSize: 24)),
-              ),
+              child: Center(child: Text(emoji, style: const TextStyle(fontSize: 24))),
             ),
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: GoogleFonts.nunito(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
+              fontSize: 10, fontWeight: FontWeight.w700,
               color: online ? FurPalsColors.textMid : FurPalsColors.textSoft,
             ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis, maxLines: 1, textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -2183,40 +2011,26 @@ class _HomeBodyState extends State<HomeBody> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: const Color(0xFFF0E4DC), width: 1.5),
           boxShadow: const [
-            BoxShadow(
-              color: FurPalsColors.shadow,
-              blurRadius: 4,
-              offset: Offset(0, 3),
-            ),
+            BoxShadow(color: FurPalsColors.shadow, blurRadius: 4, offset: Offset(0, 3)),
           ],
         ),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         child: Row(
           children: [
-            const Icon(
-              Icons.search_sharp,
-              color: FurPalsColors.textSoft,
-              size: 30,
-            ),
+            const Icon(Icons.search_sharp, color: FurPalsColors.textSoft, size: 30),
             const SizedBox(width: 8),
             Expanded(
               child: TextField(
                 decoration: InputDecoration(
                   hintText: 'Search Something...',
                   hintStyle: GoogleFonts.nunito(
-                    color: FurPalsColors.textSoft,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
-                  ),
+                      color: FurPalsColors.textSoft, fontWeight: FontWeight.w500, fontSize: 13),
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
                 style: GoogleFonts.nunito(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: FurPalsColors.black100,
-                ),
+                    fontSize: 13, fontWeight: FontWeight.w600, color: FurPalsColors.black100),
               ),
             ),
           ],
@@ -2225,7 +2039,6 @@ class _HomeBodyState extends State<HomeBody> {
     );
   }
 
-  // REAL feed from Firestore — streams live updates
   Widget _buildFeed() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -2234,9 +2047,7 @@ class _HomeBodyState extends State<HomeBody> {
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(color: FurPalsColors.pink),
-          );
+          return const Center(child: CircularProgressIndicator(color: FurPalsColors.pink));
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(
@@ -2245,28 +2056,17 @@ class _HomeBodyState extends State<HomeBody> {
               children: [
                 const Text('🐾', style: TextStyle(fontSize: 64)),
                 const SizedBox(height: 16),
-                Text(
-                  'No posts yet!',
-                  style: GoogleFonts.baloo2(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: FurPalsColors.textDark,
-                  ),
-                ),
+                Text('No posts yet!',
+                    style: GoogleFonts.baloo2(
+                        fontSize: 22, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
                 const SizedBox(height: 6),
-                Text(
-                  'Be the first to share something',
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    color: FurPalsColors.textMid,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text('Be the first to share something',
+                    style: GoogleFonts.nunito(
+                        fontSize: 14, color: FurPalsColors.textMid, fontWeight: FontWeight.w600)),
               ],
             ),
           );
         }
-
         final posts = snapshot.data!.docs;
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
@@ -2293,7 +2093,6 @@ class _HomeBodyState extends State<HomeBody> {
     final createdAt = post['createdAt'] as Timestamp?;
     final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
-    // Gradient colors for the post image placeholder (cycle through app palette)
     final colorPairs = [
       [FurPalsColors.blush, FurPalsColors.peach],
       [FurPalsColors.mint, FurPalsColors.butter],
@@ -2307,11 +2106,7 @@ class _HomeBodyState extends State<HomeBody> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
-          BoxShadow(
-            color: FurPalsColors.textSoft,
-            blurRadius: 2,
-            offset: Offset(0, 4),
-          ),
+          BoxShadow(color: FurPalsColors.textSoft, blurRadius: 2, offset: Offset(0, 4)),
         ],
       ),
       clipBehavior: Clip.hardEdge,
@@ -2319,27 +2114,21 @@ class _HomeBodyState extends State<HomeBody> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Header: avatar + name + 3-dot menu ──
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
             child: Row(
               children: [
                 Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: FurPalsColors.onlineGreen,
-                  ),
+                  width: 46, height: 46,
+                  decoration: const BoxDecoration(
+                      shape: BoxShape.circle, color: FurPalsColors.onlineGreen),
                   padding: const EdgeInsets.all(2.5),
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(colors: [pair[0], pair[1]]),
                     ),
-                    child: const Center(
-                      child: Text('🐾', style: TextStyle(fontSize: 22)),
-                    ),
+                    child: const Center(child: Text('🐾', style: TextStyle(fontSize: 22))),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -2348,48 +2137,25 @@ class _HomeBodyState extends State<HomeBody> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        fullName,
-                        style: GoogleFonts.baloo2(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: FurPalsColors.textDark,
-                          height: 1.1,
-                        ),
-                      ),
+                      Text(fullName,
+                          style: GoogleFonts.baloo2(
+                              fontSize: 15, fontWeight: FontWeight.w800,
+                              color: FurPalsColors.textDark, height: 1.1)),
                       const SizedBox(height: 2),
-                      Text(
-                        '@$username',
-                        style: GoogleFonts.nunito(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: FurPalsColors.textMid,
-                        ),
-                      ),
+                      Text('@$username',
+                          style: GoogleFonts.nunito(
+                              fontSize: 11, fontWeight: FontWeight.w600, color: FurPalsColors.textMid)),
                     ],
                   ),
                 ),
                 GestureDetector(
                   onTap: () => _showPostOptionsMenu(
-                    context,
-                    username,
-                    postId,
-                    currentUid,
-                    post['userId'] ?? '',
-                    mediaURL,
-                    mediaType,
-                  ),
-                  child: const Icon(
-                    Icons.more_horiz_rounded,
-                    color: Colors.black,
-                    size: 22,
-                  ),
+                      context, username, postId, currentUid, post['userId'] ?? '', mediaURL, mediaType),
+                  child: const Icon(Icons.more_horiz_rounded, color: Colors.black, size: 22),
                 ),
               ],
             ),
           ),
-
-          // ── Media area: real image, video placeholder, or emoji placeholder ──
           if (mediaURL.isNotEmpty && mediaType == 'photo')
             Container(
               width: double.infinity,
@@ -2402,16 +2168,9 @@ class _HomeBodyState extends State<HomeBody> {
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
                   return Container(
-                    width: double.infinity,
-                    height: 220,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: pair),
-                    ),
-                    child: const Center(
-                      child: CircularProgressIndicator(
-                        color: FurPalsColors.pink,
-                      ),
-                    ),
+                    width: double.infinity, height: 220,
+                    decoration: BoxDecoration(gradient: LinearGradient(colors: pair)),
+                    child: const Center(child: CircularProgressIndicator(color: FurPalsColors.pink)),
                   );
                 },
               ),
@@ -2427,37 +2186,23 @@ class _HomeBodyState extends State<HomeBody> {
             )
           else
             _emojiPlaceholder(pair),
-
-          // ── Location chip (if user added one) ──
           if (location.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.location_on_rounded,
-                    size: 13,
-                    color: FurPalsColors.pink,
-                  ),
+                  const Icon(Icons.location_on_rounded, size: 13, color: FurPalsColors.pink),
                   const SizedBox(width: 4),
-                  Text(
-                    location,
-                    style: GoogleFonts.nunito(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: FurPalsColors.textMid,
-                    ),
-                  ),
+                  Text(location,
+                      style: GoogleFonts.nunito(
+                          fontSize: 11, fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
                 ],
               ),
             ),
-
-          // ── Action pills: Like, Comment, Share ──
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
             child: Row(
               children: [
-                // LIKE button — toggles in Firestore
                 _LikeButton(
                   key: ValueKey(postId),
                   postId: postId,
@@ -2467,30 +2212,20 @@ class _HomeBodyState extends State<HomeBody> {
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onTap: () =>
-                      _showCommentsModal(context, postId, commentCount),
+                  onTap: () => _showCommentsModal(context, postId, commentCount),
                   child: _actionPill(
-                    Icons.chat_bubble_outline,
-                    _formatCount(commentCount),
-                    FurPalsColors.creamwhite,
-                    FurPalsColors.textDark,
-                  ),
+                      Icons.chat_bubble_outline, _formatCount(commentCount),
+                      FurPalsColors.creamwhite, FurPalsColors.textDark),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () => _showShareModal(context, username),
                   child: _actionPill(
-                    Icons.share_outlined,
-                    '',
-                    FurPalsColors.creamwhite,
-                    FurPalsColors.blue,
-                  ),
+                      Icons.share_outlined, '', FurPalsColors.creamwhite, FurPalsColors.blue),
                 ),
               ],
             ),
           ),
-
-          // ── Caption + time/date ──
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
             child: Column(
@@ -2498,46 +2233,23 @@ class _HomeBodyState extends State<HomeBody> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (description.isNotEmpty)
-                  Text(
-                    description,
-                    style: GoogleFonts.nunito(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: FurPalsColors.textDark,
-                    ),
-                  ),
+                  Text(description,
+                      style: GoogleFonts.nunito(
+                          fontSize: 13, fontWeight: FontWeight.w700, color: FurPalsColors.textDark)),
                 const SizedBox(height: 5),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.access_time_rounded,
-                      size: 11,
-                      color: FurPalsColors.textSoft,
-                    ),
+                    const Icon(Icons.access_time_rounded, size: 11, color: FurPalsColors.textSoft),
                     const SizedBox(width: 3),
-                    Text(
-                      _formatTime(createdAt),
-                      style: GoogleFonts.nunito(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: FurPalsColors.textSoft,
-                      ),
-                    ),
+                    Text(_formatTime(createdAt),
+                        style: GoogleFonts.nunito(
+                            fontSize: 11, fontWeight: FontWeight.w600, color: FurPalsColors.textSoft)),
                     const SizedBox(width: 8),
-                    const Icon(
-                      Icons.calendar_today_rounded,
-                      size: 11,
-                      color: FurPalsColors.textSoft,
-                    ),
+                    const Icon(Icons.calendar_today_rounded, size: 11, color: FurPalsColors.textSoft),
                     const SizedBox(width: 3),
-                    Text(
-                      _formatDate(createdAt),
-                      style: GoogleFonts.nunito(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: FurPalsColors.textSoft,
-                      ),
-                    ),
+                    Text(_formatDate(createdAt),
+                        style: GoogleFonts.nunito(
+                            fontSize: 11, fontWeight: FontWeight.w600, color: FurPalsColors.textSoft)),
                   ],
                 ),
               ],
@@ -2550,14 +2262,10 @@ class _HomeBodyState extends State<HomeBody> {
 
   Widget _emojiPlaceholder(List<Color> pair) {
     return Container(
-      width: double.infinity,
-      height: 220,
+      width: double.infinity, height: 220,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: pair,
-        ),
+            begin: Alignment.topLeft, end: Alignment.bottomRight, colors: pair),
       ),
       child: const Center(child: Text('🐾', style: TextStyle(fontSize: 90))),
     );
@@ -2566,24 +2274,16 @@ class _HomeBodyState extends State<HomeBody> {
   Widget _actionPill(IconData icon, String count, Color bg, Color fg) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(22),
-      ),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(22)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 15, color: fg),
           if (count.isNotEmpty) ...[
             const SizedBox(width: 5),
-            Text(
-              count,
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: FurPalsColors.textDark,
-              ),
-            ),
+            Text(count,
+                style: GoogleFonts.nunito(
+                    fontSize: 12, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
           ],
         ],
       ),
@@ -2591,8 +2291,6 @@ class _HomeBodyState extends State<HomeBody> {
   }
 }
 
-
-//likeCount firebase
 class _LikeButton extends StatefulWidget {
   final String postId;
   final int likeCount;
@@ -2603,7 +2301,8 @@ class _LikeButton extends StatefulWidget {
     required this.postId,
     required this.likeCount,
     required this.currentUid,
-    required this.postOwnerId, required ValueKey<String> key,
+    required this.postOwnerId,
+    required ValueKey<String> key,
   });
 
   @override
@@ -2653,9 +2352,7 @@ class _LikeButtonState extends State<_LikeButton> {
         .doc(widget.postId)
         .collection('likes')
         .doc(widget.currentUid);
-    final postRef = FirebaseFirestore.instance
-        .collection('posts')
-        .doc(widget.postId);
+    final postRef = FirebaseFirestore.instance.collection('posts').doc(widget.postId);
 
     try {
       final didLike = await FirebaseFirestore.instance.runTransaction<bool>((tx) async {
@@ -2667,12 +2364,7 @@ class _LikeButtonState extends State<_LikeButton> {
         if (likeSnapshot.exists) {
           tx.delete(likeRef);
           tx.update(postRef, {'likeCount': FieldValue.increment(-1)});
-          if (mounted) {
-            setState(() {
-              _liked = false;
-              _count = (currentCount - 1).clamp(0, 99999999);
-            });
-          }
+          if (mounted) setState(() { _liked = false; _count = (currentCount - 1).clamp(0, 99999999); });
           return false;
         }
 
@@ -2684,12 +2376,7 @@ class _LikeButtonState extends State<_LikeButton> {
           'createdAt': FieldValue.serverTimestamp(),
         });
         tx.update(postRef, {'likeCount': FieldValue.increment(1)});
-        if (mounted) {
-          setState(() {
-            _liked = true;
-            _count = currentCount + 1;
-          });
-        }
+        if (mounted) setState(() { _liked = true; _count = currentCount + 1; });
         return true;
       });
 
@@ -2708,9 +2395,7 @@ class _LikeButtonState extends State<_LikeButton> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: _liked
-              ? FurPalsColors.heartRed.withOpacity(0.12)
-              : FurPalsColors.creamwhite,
+          color: _liked ? FurPalsColors.heartRed.withOpacity(0.12) : FurPalsColors.creamwhite,
           borderRadius: BorderRadius.circular(22),
         ),
         child: Row(
@@ -2718,18 +2403,12 @@ class _LikeButtonState extends State<_LikeButton> {
           children: [
             Icon(
               _liked ? Icons.favorite_rounded : Icons.favorite_outline,
-              size: 15,
-              color: _liked ? FurPalsColors.heartRed : FurPalsColors.heartRed,
+              size: 15, color: FurPalsColors.heartRed,
             ),
             const SizedBox(width: 5),
-            Text(
-              _formatCount(_count),
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: FurPalsColors.textDark,
-              ),
-            ),
+            Text(_formatCount(_count),
+                style: GoogleFonts.nunito(
+                    fontSize: 12, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
           ],
         ),
       ),
@@ -2745,12 +2424,11 @@ class _NetworkVideoPlayer extends StatefulWidget {
   State<_NetworkVideoPlayer> createState() => _NetworkVideoPlayerState();
 }
 
-class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
-    with WidgetsBindingObserver {
+class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer> with WidgetsBindingObserver {
   VideoPlayerController? _controller;
   bool _initialized = false;
   bool _hasError = false;
-  bool _isMuted = true; // Start muted
+  bool _isMuted = true;
   bool _showControls = false;
   Timer? _overlayTimer;
 
@@ -2762,37 +2440,21 @@ class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
       ..setLooping(true)
       ..setVolume(0)
       ..addListener(_handleVideoState)
-      ..initialize()
-          .then((_) {
-            if (mounted) {
-              setState(() {
-                _initialized = true;
-                _hasError = false;
-              });
-            }
-          })
-          .catchError((e) {
-            print('Video player initialize error: $e');
-            if (mounted) {
-              setState(() {
-                _hasError = true;
-              });
-            }
-          });
+      ..initialize().then((_) {
+        if (mounted) setState(() { _initialized = true; _hasError = false; });
+      }).catchError((e) {
+        if (mounted) setState(() => _hasError = true);
+      });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      _controller?.pause();
-    }
+    if (state == AppLifecycleState.paused) _controller?.pause();
   }
 
   void _handleVideoState() {
     if (_controller?.value.hasError ?? false) {
-      setState(() {
-        _hasError = true;
-      });
+      setState(() => _hasError = true);
     }
   }
 
@@ -2839,35 +2501,25 @@ class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
   Widget build(BuildContext context) {
     if (_hasError) {
       return Container(
-        width: double.infinity,
-        height: 220,
+        width: double.infinity, height: 220,
         decoration: BoxDecoration(
-          color: FurPalsColors.lavender,
-          borderRadius: BorderRadius.circular(10),
-        ),
+            color: FurPalsColors.lavender, borderRadius: BorderRadius.circular(10)),
         child: Center(
           child: Text(
             'Video unavailable. Please try a smaller file or check connection.',
             textAlign: TextAlign.center,
             style: GoogleFonts.nunito(
-              color: FurPalsColors.textDark,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
+                color: FurPalsColors.textDark, fontSize: 13, fontWeight: FontWeight.w700),
           ),
         ),
       );
     }
 
     if (!_initialized || _controller == null) {
-      return const Center(
-        child: CircularProgressIndicator(color: FurPalsColors.pink),
-      );
+      return const Center(child: CircularProgressIndicator(color: FurPalsColors.pink));
     }
 
-    final aspectRatio = _controller!.value.aspectRatio > 0
-        ? _controller!.value.aspectRatio
-        : 16 / 9;
+    final aspectRatio = _controller!.value.aspectRatio > 0 ? _controller!.value.aspectRatio : 16 / 9;
 
     return Stack(
       fit: StackFit.expand,
@@ -2881,9 +2533,7 @@ class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
               if (!_controller!.value.isInitialized)
                 Container(
                   color: Colors.black54,
-                  child: const Center(
-                    child: CircularProgressIndicator(color: FurPalsColors.pink),
-                  ),
+                  child: const Center(child: CircularProgressIndicator(color: FurPalsColors.pink)),
                 ),
             ],
           ),
@@ -2891,56 +2541,28 @@ class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
         Positioned.fill(
           child: Row(
             children: [
-              // Left half — double tap to go back 10s
               Expanded(
                 child: GestureDetector(
-                  onDoubleTap: () {
-                    _seekBackward();
-                  },
-                  onTap: () {
-                    setState(() {
-                      _togglePlayback();
-                    });
-                  },
+                  onDoubleTap: _seekBackward,
+                  onTap: () => setState(() => _togglePlayback()),
                   onHorizontalDragEnd: (details) {
                     if (details.primaryVelocity != null) {
-                      if (details.primaryVelocity! > 0) {
-                        _seekBackward();
-                      } else {
-                        _seekForward();
-                      }
+                      if (details.primaryVelocity! > 0) _seekBackward(); else _seekForward();
                     }
                   },
-                  child: Container(
-                    color: Colors.transparent,
-                    alignment: Alignment.center,
-                  ),
+                  child: Container(color: Colors.transparent, alignment: Alignment.center),
                 ),
               ),
-              // Right half — double tap to go forward 10s
               Expanded(
                 child: GestureDetector(
-                  onDoubleTap: () {
-                    _seekForward();
-                  },
-                  onTap: () {
-                    setState(() {
-                      _togglePlayback();
-                    });
-                  },
+                  onDoubleTap: _seekForward,
+                  onTap: () => setState(() => _togglePlayback()),
                   onHorizontalDragEnd: (details) {
                     if (details.primaryVelocity != null) {
-                      if (details.primaryVelocity! > 0) {
-                        _seekBackward();
-                      } else {
-                        _seekForward();
-                      }
+                      if (details.primaryVelocity! > 0) _seekBackward(); else _seekForward();
                     }
                   },
-                  child: Container(
-                    color: Colors.transparent,
-                    alignment: Alignment.center,
-                  ),
+                  child: Container(color: Colors.transparent, alignment: Alignment.center),
                 ),
               ),
             ],
@@ -2967,18 +2589,14 @@ class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
                 color: Colors.transparent,
                 alignment: Alignment.center,
                 child: Icon(
-                  _controller!.value.isPlaying
-                      ? Icons.pause_circle_filled
-                      : Icons.play_circle_filled,
-                  size: 56,
-                  color: Colors.white70,
+                  _controller!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                  size: 56, color: Colors.white70,
                 ),
               ),
             ),
           ),
         Positioned(
-          top: 8,
-          right: 8,
+          top: 8, right: 8,
           child: GestureDetector(
             onTap: () {
               setState(() {
@@ -2988,14 +2606,10 @@ class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
             },
             child: Container(
               padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(20),
-              ),
+              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
               child: Icon(
                 _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                color: Colors.white,
-                size: 20,
+                color: Colors.white, size: 20,
               ),
             ),
           ),
@@ -3005,7 +2619,6 @@ class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
   }
 }
 
-//saves post to the firebase
 class PostModal extends StatefulWidget {
   const PostModal({super.key});
 
@@ -3016,17 +2629,17 @@ class PostModal extends StatefulWidget {
 class _PostModalState extends State<PostModal> {
   String _audience = 'Feed';
   String _privacy = 'Only me';
-  static const _audienceOptions = ['Feed', 'Friends', 'Public'];
+  static const _audienceOptions = ['Feed', 'Group', 'Lost and Found'];
   static const _privacyOptions = ['Only me', 'Friends', 'Everyone'];
 
   final _descriptionCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
 
   XFile? _pickedMedia;
-  String _mediaType = 'none'; // 'photo', 'video', 'none'
+  String _mediaType = 'none';
   bool _showLocation = false;
   VideoPlayerController? _videoController;
-  bool _postVideoMuted = false; // Sound enabled by default
+  bool _postVideoMuted = false;
 
   @override
   void dispose() {
@@ -3038,104 +2651,70 @@ class _PostModalState extends State<PostModal> {
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final file = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
-    );
+    final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (file != null) {
-      setState(() {
-        _pickedMedia = file;
-        _mediaType = 'photo';
-      });
+      setState(() { _pickedMedia = file; _mediaType = 'photo'; });
     }
   }
 
   Future<void> _pickVideo() async {
     try {
       final picker = ImagePicker();
-      final file = await picker.pickVideo(
-        source: ImageSource.gallery,
-        maxDuration: const Duration(minutes: 5),
-      );
+      final file = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 5));
       if (file != null) {
         final videoFile = File(file.path);
         final videoSize = videoFile.lengthSync();
         final videoSizeMB = videoSize / 1024 / 1024;
-        const maxSize = 100 * 1024 * 1024; // 100 MB limit
-        
-        // Always show file size info
+        const maxSize = 100 * 1024 * 1024;
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Video size: ${videoSizeMB.toStringAsFixed(1)} MB',
-                style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-              ),
-              backgroundColor: videoSizeMB > 80 
-                  ? FurPalsColors.heartRed 
-                  : FurPalsColors.green,
+              content: Text('Video size: ${videoSizeMB.toStringAsFixed(1)} MB',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+              backgroundColor: videoSizeMB > 80 ? FurPalsColors.heartRed : FurPalsColors.green,
               behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               duration: const Duration(seconds: 2),
             ),
           );
         }
-        
+
         if (videoSize > maxSize) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  '❌ Video too large! (${videoSizeMB.toStringAsFixed(1)} MB)\nMax: 100 MB\n\nTip: Videos are auto-compressed. Try again or use a shorter clip.',
-                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                ),
+                    '❌ Video too large! (${videoSizeMB.toStringAsFixed(1)} MB)\nMax: 100 MB\n\nTip: Videos are auto-compressed. Try again or use a shorter clip.',
+                    style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
                 backgroundColor: FurPalsColors.heartRed,
                 behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 duration: const Duration(seconds: 4),
               ),
             );
           }
           return;
         }
-        
-        print('Video picked: ${file.path} (${videoSizeMB.toStringAsFixed(2)} MB)');
+
         _videoController?.dispose();
         _videoController = VideoPlayerController.file(videoFile);
         await _videoController!.initialize();
         _videoController!.setLooping(true);
-        _videoController!.setVolume(0.0); // Start muted, user can unmute
-        
-        // Give MediaCodec time to initialize properly
+        _videoController!.setVolume(0.0);
         await Future.delayed(const Duration(milliseconds: 200));
-        
         _videoController!.play();
-        setState(() {
-          _pickedMedia = file;
-          _mediaType = 'video';
-          _postVideoMuted = false; // Video starts muted
-        });
-      } else {
-        print('No video selected');
+        setState(() { _pickedMedia = file; _mediaType = 'video'; _postVideoMuted = false; });
       }
     } catch (e) {
-      print('Video picker error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Unable to pick video. Try again.',
-              style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-            ),
+            content: Text('Unable to pick video. Try again.',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
             backgroundColor: FurPalsColors.heartRed,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -3144,10 +2723,6 @@ class _PostModalState extends State<PostModal> {
 
   Future<File?> _compressVideo(File videoFile) async {
     try {
-      final originalSize = videoFile.lengthSync();
-      print('Original video size: ${(originalSize / 1024 / 1024).toStringAsFixed(2)} MB');
-
-      // Safe guard against lower-level isolate errors
       final info = await VideoCompress.compressVideo(
         videoFile.path,
         quality: VideoQuality.LowQuality,
@@ -3155,24 +2730,11 @@ class _PostModalState extends State<PostModal> {
         includeAudio: true,
       ).catchError((error, stack) {
         print('VideoCompress isolate error: $error');
-        print(stack);
         return null;
       });
-
-      if (info == null || info.path == null) {
-        print('Compression info invalid, using original file.');
-        return null;
-      }
-
-      final compressed = File(info.path!);
-      final compressedSize = compressed.lengthSync();
-      print('Compressed video size: ${(compressedSize / 1024 / 1024).toStringAsFixed(2)} MB');
-      print('Compression ratio: ${((1 - compressedSize / originalSize) * 100).toStringAsFixed(1)}%');
-      
-      return compressed;
-    } catch (e, stack) {
-      print('Video compression failed (caught): $e');
-      print(stack);
+      if (info == null || info.path == null) return null;
+      return File(info.path!);
+    } catch (e) {
       return null;
     }
   }
@@ -3181,65 +2743,30 @@ class _PostModalState extends State<PostModal> {
     if (_pickedMedia == null) return '';
     try {
       File file = File(_pickedMedia!.path);
-      if (!file.existsSync()) {
-        print('Video/Photo file does not exist at: ${_pickedMedia!.path}');
-        return '';
-      }
+      if (!file.existsSync()) return '';
 
       if (_mediaType == 'video') {
-        // Ensure video is paused before compression
         _videoController?.pause();
-        
         final compressed = await _compressVideo(file);
-        if (compressed != null && compressed.existsSync()) {
-          print(
-            'Video compressed from ${file.lengthSync()} bytes to ${compressed.lengthSync()} bytes',
-          );
-          file = compressed;
-        } else {
-          print(
-            'Video compression skipped or failed; uploading original file.',
-          );
-        }
+        if (compressed != null && compressed.existsSync()) file = compressed;
       }
 
       final ext = _mediaType == 'photo' ? 'jpg' : 'mp4';
       final path = 'posts/$uid/${DateTime.now().millisecondsSinceEpoch}.$ext';
       final ref = FirebaseStorage.instance.ref().child(path);
-
-      print('Uploading $_mediaType to: $path');
-      print('File size before upload: ${(file.lengthSync() / 1024 / 1024).toStringAsFixed(2)} MB');
       final uploadTask = ref.putFile(file);
-      uploadTask.snapshotEvents.listen((event) {
-        final progress =
-            event.bytesTransferred /
-            (event.totalBytes == 0 ? 1 : event.totalBytes);
-        print('Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
-      });
-
       await uploadTask;
-      final url = await ref.getDownloadURL();
-      print('Upload success: $url');
-      
-      // Give the UI time to update before proceeding
-      await Future.delayed(const Duration(milliseconds: 100));
-      
-      return url;
+      return await ref.getDownloadURL();
     } catch (e) {
-      print('Upload error: $e');
       return '';
     }
   }
 
   Future<void> _sharePost() async {
-    // Stop and dispose video controller before upload to prevent buffer issues
     if (_mediaType == 'video' && _videoController != null) {
       _videoController!.pause();
-      // Keep controller for metadata, don't dispose yet to avoid black screen
-      // It will be disposed when modal closes
     }
 
-    // Show loading dialog
     if (mounted) {
       showDialog(
         context: context,
@@ -3251,24 +2778,15 @@ class _PostModalState extends State<PostModal> {
             children: [
               const CircularProgressIndicator(color: FurPalsColors.pink),
               const SizedBox(height: 16),
-              Text(
-                'Uploading your post...',
-                style: GoogleFonts.baloo2(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: FurPalsColors.textDark,
-                ),
-              ),
+              Text('Uploading your post...',
+                  style: GoogleFonts.baloo2(
+                      fontSize: 14, fontWeight: FontWeight.w700, color: FurPalsColors.textDark)),
               const SizedBox(height: 8),
               Text(
-                _mediaType == 'video' 
-                  ? 'Videos may take longer (max 100 MB)'
-                  : 'This may take a moment...',
-                style: GoogleFonts.nunito(
-                  fontSize: 12,
-                  color: FurPalsColors.textMid,
-                ),
-              ),
+                  _mediaType == 'video'
+                      ? 'Videos may take longer (max 100 MB)'
+                      : 'This may take a moment...',
+                  style: GoogleFonts.nunito(fontSize: 12, color: FurPalsColors.textMid)),
             ],
           ),
         ),
@@ -3282,18 +2800,14 @@ class _PostModalState extends State<PostModal> {
       final profile = await _getCurrentUserProfile();
       final uname = profile['username'] ?? '';
       final fname = profile['fullName'] ?? '';
-
-      // Upload media if selected, get download URL
       final mediaURL = await _uploadMedia(uid);
 
-      // If media was selected but upload failed, show error
       if (_pickedMedia != null && mediaURL.isEmpty) {
-        if (mounted) Navigator.pop(context); // Close loading dialog
+        if (mounted) Navigator.pop(context);
         final fileSize = File(_pickedMedia!.path).lengthSync() / 1024 / 1024;
         throw 'Upload failed (${fileSize.toStringAsFixed(1)} MB).\n\n✗ Can handle: up to 100 MB\n✗ Check: Internet connection and Firebase usage limits\n✗ Tip: Convert to lower quality or shorter duration if you see a black screen';
       }
 
-      // Save post to Firestore
       final postRef = FirebaseFirestore.instance.collection('posts').doc();
       await postRef.set({
         'postId': postRef.id,
@@ -3303,8 +2817,10 @@ class _PostModalState extends State<PostModal> {
         'description': _descriptionCtrl.text.trim(),
         'mediaURL': mediaURL,
         'mediaType': _mediaType,
-        'videoWidth': _mediaType == 'video' && _videoController != null ? _videoController!.value.size.width : 0,
-        'videoHeight': _mediaType == 'video' && _videoController != null ? _videoController!.value.size.height : 0,
+        'videoWidth': _mediaType == 'video' && _videoController != null
+            ? _videoController!.value.size.width : 0,
+        'videoHeight': _mediaType == 'video' && _videoController != null
+            ? _videoController!.value.size.height : 0,
         'location': _showLocation ? _locationCtrl.text.trim() : '',
         'audience': _audience,
         'privacy': _privacy,
@@ -3314,39 +2830,29 @@ class _PostModalState extends State<PostModal> {
       });
 
       if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop(); // Close loading dialog
-        Navigator.pop(context); // Close post modal
+        Navigator.of(context, rootNavigator: true).pop();
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Post shared! 🐾',
-              style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-            ),
+            content: Text('Post shared! 🐾',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
             backgroundColor: FurPalsColors.green,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
     } catch (e) {
-      print('Share post error: $e');
       if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop(); // Close loading dialog
+        Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              e.toString().contains('Failed')
-                  ? e.toString()
-                  : 'Failed to post. Please try again.',
-              style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-            ),
+                e.toString().contains('Failed') ? e.toString() : 'Failed to post. Please try again.',
+                style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
             backgroundColor: FurPalsColors.heartRed,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -3366,83 +2872,53 @@ class _PostModalState extends State<PostModal> {
         children: [
           const SizedBox(height: 12),
           Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: FurPalsColors.blush,
-              borderRadius: BorderRadius.circular(2),
-            ),
+            width: 40, height: 4,
+            decoration: BoxDecoration(color: FurPalsColors.blush, borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 16),
-
-          // Header
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                Text(
-                  'New Post',
-                  style: GoogleFonts.baloo2(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: FurPalsColors.textDark,
-                  ),
-                ),
+                Text('New Post',
+                    style: GoogleFonts.baloo2(
+                        fontSize: 20, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
                 const Spacer(),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: Container(
-                    width: 32,
-                    height: 32,
+                    width: 32, height: 32,
                     decoration: BoxDecoration(
-                      color: FurPalsColors.blush,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.close_rounded,
-                      color: FurPalsColors.pink,
-                      size: 18,
-                    ),
+                        color: FurPalsColors.blush, borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.close_rounded, color: FurPalsColors.pink, size: 18),
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 20),
-
-          // Avatar + username + dropdowns + description input
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 15),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 44, height: 44,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [FurPalsColors.blush, FurPalsColors.peach],
-                    ),
+                    gradient: LinearGradient(colors: [FurPalsColors.blush, FurPalsColors.peach]),
                   ),
-                  child: const Center(
-                    child: Text('🐾', style: TextStyle(fontSize: 22)),
-                  ),
+                  child: const Center(child: Text('🐾', style: TextStyle(fontSize: 22))),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Real username from Firebase Auth
                       Text(
-                        FirebaseAuth.instance.currentUser?.displayName ??
-                            'FurPals User',
+                        FirebaseAuth.instance.currentUser?.displayName ?? 'FurPals User',
                         style: GoogleFonts.baloo2(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: FurPalsColors.textDark,
-                        ),
+                            fontSize: 15, fontWeight: FontWeight.w800, color: FurPalsColors.textDark),
                       ),
                       const SizedBox(height: 4),
                       Row(
@@ -3463,26 +2939,17 @@ class _PostModalState extends State<PostModal> {
                         ],
                       ),
                       const SizedBox(height: 15),
-                      // Description input
                       TextField(
                         controller: _descriptionCtrl,
                         maxLines: 3,
                         decoration: InputDecoration(
                           hintText: "What's your pet up to?",
-                          hintStyle: GoogleFonts.nunito(
-                            color: FurPalsColors.textSoft,
-                            fontSize: 14,
-                          ),
+                          hintStyle: GoogleFonts.nunito(color: FurPalsColors.textSoft, fontSize: 14),
                           border: InputBorder.none,
                         ),
                         style: GoogleFonts.nunito(
-                          fontSize: 14,
-                          color: FurPalsColors.black100,
-                          fontWeight: FontWeight.w600,
-                        ),
+                            fontSize: 14, color: FurPalsColors.black100, fontWeight: FontWeight.w600),
                       ),
-
-                      // Location input (shown only when location is tapped)
                       if (_showLocation)
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3492,61 +2959,33 @@ class _PostModalState extends State<PostModal> {
                               controller: _locationCtrl,
                               decoration: InputDecoration(
                                 hintText: 'Search or enter location...',
-                                hintStyle: GoogleFonts.nunito(
-                                  color: FurPalsColors.textSoft,
-                                  fontSize: 13,
-                                ),
+                                hintStyle: GoogleFonts.nunito(color: FurPalsColors.textSoft, fontSize: 13),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(
-                                    color: FurPalsColors.mint,
-                                    width: 1.5,
-                                  ),
+                                  borderSide: const BorderSide(color: FurPalsColors.mint, width: 1.5),
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(
-                                    color: FurPalsColors.mint,
-                                    width: 1.5,
-                                  ),
+                                  borderSide: const BorderSide(color: FurPalsColors.mint, width: 1.5),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(
-                                    color: FurPalsColors.pink,
-                                    width: 2,
-                                  ),
+                                  borderSide: const BorderSide(color: FurPalsColors.pink, width: 2),
                                 ),
-                                prefixIcon: const Icon(
-                                  Icons.location_on_rounded,
-                                  color: FurPalsColors.pink,
-                                  size: 18,
-                                ),
+                                prefixIcon: const Icon(Icons.location_on_rounded,
+                                    color: FurPalsColors.pink, size: 18),
                                 suffixIcon: _locationCtrl.text.isNotEmpty
                                     ? GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            _locationCtrl.clear();
-                                          });
-                                        },
-                                        child: const Icon(
-                                          Icons.close_rounded,
-                                          color: FurPalsColors.textMid,
-                                          size: 18,
-                                        ),
+                                        onTap: () => setState(() => _locationCtrl.clear()),
+                                        child: const Icon(Icons.close_rounded,
+                                            color: FurPalsColors.textMid, size: 18),
                                       )
                                     : null,
                                 isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 12,
-                                ),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                               ),
                               style: GoogleFonts.nunito(
-                                fontSize: 13,
-                                color: FurPalsColors.textDark,
-                                fontWeight: FontWeight.w600,
-                              ),
+                                  fontSize: 13, color: FurPalsColors.textDark, fontWeight: FontWeight.w600),
                               onChanged: (value) => setState(() {}),
                             ),
                           ],
@@ -3557,8 +2996,6 @@ class _PostModalState extends State<PostModal> {
               ],
             ),
           ),
-
-          // Preview selected media thumbnail — Full width and centered
           if (_pickedMedia != null) ...[
             const SizedBox(height: 12),
             Padding(
@@ -3569,61 +3006,48 @@ class _PostModalState extends State<PostModal> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: _mediaType == 'photo'
-                        ? Image.file(
-                            File(_pickedMedia!.path),
-                            height: 200,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                          )
-                        : (_videoController != null &&
-                              _videoController!.value.isInitialized)
-                        ? SizedBox(
-                            height: 200,
-                            width: double.infinity,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                AspectRatio(
-                                  aspectRatio: _videoController!.value.aspectRatio,
-                                  child: VideoPlayer(_videoController!),
-                                ),
-                                GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _videoController!.value.isPlaying
-                                          ? _videoController!.pause()
-                                          : _videoController!.play();
-                                    });
-                                  },
-                                  child: Container(
-                                    color: Colors.black26,
-                                    child: Icon(
-                                      _videoController!.value.isPlaying
-                                          ? Icons.pause_circle
-                                          : Icons.play_circle,
-                                      size: 56,
-                                      color: Colors.white70,
+                        ? Image.file(File(_pickedMedia!.path),
+                            height: 200, width: double.infinity, fit: BoxFit.cover)
+                        : (_videoController != null && _videoController!.value.isInitialized)
+                            ? SizedBox(
+                                height: 200, width: double.infinity,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    AspectRatio(
+                                      aspectRatio: _videoController!.value.aspectRatio,
+                                      child: VideoPlayer(_videoController!),
                                     ),
-                                  ),
+                                    GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _videoController!.value.isPlaying
+                                              ? _videoController!.pause()
+                                              : _videoController!.play();
+                                        });
+                                      },
+                                      child: Container(
+                                        color: Colors.black26,
+                                        child: Icon(
+                                          _videoController!.value.isPlaying
+                                              ? Icons.pause_circle
+                                              : Icons.play_circle,
+                                          size: 56, color: Colors.white70,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          )
-                        : Container(
-                            height: 200,
-                            color: FurPalsColors.lavender,
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                color: FurPalsColors.pink,
+                              )
+                            : Container(
+                                height: 200, color: FurPalsColors.lavender,
+                                child: const Center(
+                                    child: CircularProgressIndicator(color: FurPalsColors.pink)),
                               ),
-                            ),
-                          ),
                   ),
-                  // Mute/Unmute button for video preview (top-left)
                   if (_mediaType == 'video')
                     Positioned(
-                      top: 8,
-                      left: 8,
+                      top: 8, left: 8,
                       child: GestureDetector(
                         onTap: () {
                           setState(() {
@@ -3632,24 +3056,17 @@ class _PostModalState extends State<PostModal> {
                           });
                         },
                         child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
+                          width: 28, height: 28,
+                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
                           child: Icon(
                             _postVideoMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                            color: Colors.white,
-                            size: 16,
+                            color: Colors.white, size: 16,
                           ),
                         ),
                       ),
                     ),
-                  // Close button (top-right)
                   Positioned(
-                    top: 8,
-                    right: 8,
+                    top: 8, right: 8,
                     child: GestureDetector(
                       onTap: () => setState(() {
                         _pickedMedia = null;
@@ -3659,75 +3076,58 @@ class _PostModalState extends State<PostModal> {
                         _videoController = null;
                       }),
                       child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: const BoxDecoration(
-                          color: Colors.black54,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.white,
-                          size: 16,
-                        ),
+                        width: 28, height: 28,
+                        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            // File size badge — Full width and centered (for photos and videos)
-            if (_pickedMedia != null) ...[
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 15),
-                child: Builder(
-                  builder: (context) {
-                    final fileSize = File(_pickedMedia!.path).lengthSync() / 1024 / 1024;
-                    final isLarge = fileSize > 80;
-                    return Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isLarge ? FurPalsColors.heartRed.withOpacity(0.15) : FurPalsColors.mint.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isLarge ? FurPalsColors.heartRed : FurPalsColors.green,
-                            width: 1.5,
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 15),
+              child: Builder(
+                builder: (context) {
+                  final fileSize = File(_pickedMedia!.path).lengthSync() / 1024 / 1024;
+                  final isLarge = fileSize > 80;
+                  return Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isLarge
+                            ? FurPalsColors.heartRed.withOpacity(0.15)
+                            : FurPalsColors.mint.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: isLarge ? FurPalsColors.heartRed : FurPalsColors.green, width: 1.5),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isLarge ? Icons.warning_amber_rounded : Icons.image_rounded,
+                            color: isLarge ? FurPalsColors.heartRed : FurPalsColors.green, size: 18,
                           ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              isLarge ? Icons.warning_amber_rounded : Icons.image_rounded,
-                              color: isLarge ? FurPalsColors.heartRed : FurPalsColors.green,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              isLarge 
+                          const SizedBox(width: 8),
+                          Text(
+                            isLarge
                                 ? '${fileSize.toStringAsFixed(1)} MB — Upload will be slow'
                                 : '${fileSize.toStringAsFixed(1)} MB',
-                              style: GoogleFonts.nunito(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: isLarge ? FurPalsColors.heartRed : FurPalsColors.green,
-                              ),
-                            ),
-                          ],
-                        ),
+                            style: GoogleFonts.nunito(
+                                fontSize: 12, fontWeight: FontWeight.w700,
+                                color: isLarge ? FurPalsColors.heartRed : FurPalsColors.green),
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
               ),
-            ],
+            ),
           ],
-
           const SizedBox(height: 20),
-
-          // Photo / Video / Location buttons 
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
             child: Row(
@@ -3739,28 +3139,17 @@ class _PostModalState extends State<PostModal> {
                 const SizedBox(width: 10),
                 GestureDetector(
                   onTap: _pickVideo,
-                  child: _opt(
-                    Icons.videocam_rounded,
-                    'Video',
-                    FurPalsColors.lavender,
-                  ),
+                  child: _opt(Icons.videocam_rounded, 'Video', FurPalsColors.lavender),
                 ),
                 const SizedBox(width: 10),
                 GestureDetector(
                   onTap: _showLocationPicker,
-                  child: _opt(
-                    Icons.location_on_rounded,
-                    'Location',
-                    FurPalsColors.peach,
-                  ),
+                  child: _opt(Icons.location_on_rounded, 'Location', FurPalsColors.peach),
                 ),
               ],
             ),
           ),
-
           const Spacer(),
-
-          // Share Post button — saves to Firestore
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
             child: GestureDetector(
@@ -3771,25 +3160,15 @@ class _PostModalState extends State<PostModal> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   gradient: const LinearGradient(
-                    colors: [FurPalsColors.pink, FurPalsColors.pinkLight],
-                  ),
+                      colors: [FurPalsColors.pink, FurPalsColors.pinkLight]),
                   boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x55F4738A),
-                      blurRadius: 14,
-                      offset: Offset(0, 6),
-                    ),
+                    BoxShadow(color: Color(0x55F4738A), blurRadius: 14, offset: Offset(0, 6)),
                   ],
                 ),
                 child: Center(
-                  child: Text(
-                    'Share Post 🐾',
-                    style: GoogleFonts.baloo2(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: Text('Share Post 🐾',
+                      style: GoogleFonts.baloo2(
+                          fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
                 ),
               ),
             ),
@@ -3799,20 +3178,11 @@ class _PostModalState extends State<PostModal> {
     );
   }
 
-  // Location picker with search and input functionality
   Future<void> _showLocationPicker() async {
     final TextEditingController searchCtrl = TextEditingController();
     List<String> commonLocations = [
-      'Home',
-      'Park',
-      'Beach',
-      'Coffee Shop',
-      'Dog Park',
-      'Pet Store',
-      'Vet Clinic',
-      'Downtown',
-      'Shopping Mall',
-      'Garden',
+      'Home', 'Park', 'Beach', 'Coffee Shop', 'Dog Park',
+      'Pet Store', 'Vet Clinic', 'Downtown', 'Shopping Mall', 'Garden',
     ];
     List<String> filteredLocations = commonLocations;
 
@@ -3823,64 +3193,36 @@ class _PostModalState extends State<PostModal> {
           builder: (context, setModalState) {
             return AlertDialog(
               backgroundColor: FurPalsColors.warmWhite,
-              title: Text(
-                'Select Location 📍',
-                style: GoogleFonts.baloo2(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: FurPalsColors.textDark,
-                ),
-              ),
+              title: Text('Select Location 📍',
+                  style: GoogleFonts.baloo2(
+                      fontSize: 16, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Search field
                     TextField(
                       controller: searchCtrl,
                       decoration: InputDecoration(
                         hintText: 'Search or type location...',
-                        hintStyle: GoogleFonts.nunito(
-                          color: FurPalsColors.textSoft,
-                          fontSize: 13,
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.search_rounded,
-                          color: FurPalsColors.pink,
-                          size: 18,
-                        ),
+                        hintStyle: GoogleFonts.nunito(color: FurPalsColors.textSoft, fontSize: 13),
+                        prefixIcon: const Icon(Icons.search_rounded, color: FurPalsColors.pink, size: 18),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                            color: FurPalsColors.mint,
-                            width: 1.5,
-                          ),
+                          borderSide: const BorderSide(color: FurPalsColors.mint, width: 1.5),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                            color: FurPalsColors.mint,
-                            width: 1.5,
-                          ),
+                          borderSide: const BorderSide(color: FurPalsColors.mint, width: 1.5),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                            color: FurPalsColors.pink,
-                            width: 2,
-                          ),
+                          borderSide: const BorderSide(color: FurPalsColors.pink, width: 2),
                         ),
                         isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       ),
                       style: GoogleFonts.nunito(
-                        fontSize: 13,
-                        color: FurPalsColors.textDark,
-                        fontWeight: FontWeight.w600,
-                      ),
+                          fontSize: 13, color: FurPalsColors.textDark, fontWeight: FontWeight.w600),
                       onChanged: (value) {
                         setModalState(() {
                           filteredLocations = commonLocations
@@ -3893,7 +3235,6 @@ class _PostModalState extends State<PostModal> {
                       },
                     ),
                     const SizedBox(height: 12),
-                    // Location suggestions
                     SizedBox(
                       height: 200,
                       child: ListView.builder(
@@ -3910,36 +3251,23 @@ class _PostModalState extends State<PostModal> {
                               Navigator.pop(context);
                             },
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               margin: const EdgeInsets.only(bottom: 6),
                               decoration: BoxDecoration(
                                 color: FurPalsColors.mint.withOpacity(0.3),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: FurPalsColors.mint,
-                                  width: 1,
-                                ),
+                                border: Border.all(color: FurPalsColors.mint, width: 1),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(
-                                    Icons.location_on_rounded,
-                                    color: FurPalsColors.pink,
-                                    size: 18,
-                                  ),
+                                  const Icon(Icons.location_on_rounded,
+                                      color: FurPalsColors.pink, size: 18),
                                   const SizedBox(width: 10),
                                   Expanded(
-                                    child: Text(
-                                      location,
-                                      style: GoogleFonts.nunito(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: FurPalsColors.textDark,
-                                      ),
-                                    ),
+                                    child: Text(location,
+                                        style: GoogleFonts.nunito(
+                                            fontSize: 13, fontWeight: FontWeight.w600,
+                                            color: FurPalsColors.textDark)),
                                   ),
                                 ],
                               ),
@@ -3954,14 +3282,9 @@ class _PostModalState extends State<PostModal> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    'Cancel',
-                    style: GoogleFonts.nunito(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: FurPalsColors.textMid,
-                    ),
-                  ),
+                  child: Text('Cancel',
+                      style: GoogleFonts.nunito(
+                          fontSize: 13, fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
                 ),
               ],
             );
@@ -3970,27 +3293,19 @@ class _PostModalState extends State<PostModal> {
       },
     );
   }
-          
+
   Widget _opt(IconData icon, String label, Color bg) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(color: bg.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: FurPalsColors.textMid),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.nunito(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: FurPalsColors.textMid,
-            ),
-          ),
+          Text(label,
+              style: GoogleFonts.nunito(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
         ],
       ),
     );
@@ -4001,11 +3316,9 @@ class PetsBody extends StatelessWidget {
   const PetsBody({super.key});
 
   @override
-  Widget build(BuildContext context) => const _PlaceholderBody(
-    emoji: '🐾',
-    title: 'My Pets',
-    subtitle: 'Manage your furry companions',
-  );
+  Widget build(BuildContext context) {
+    return const PetsScreen();
+  }
 }
 
 class ProfileBody extends StatelessWidget {
@@ -4013,19 +3326,15 @@ class ProfileBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const _PlaceholderBody(
-    emoji: '😊',
-    title: 'Profile',
-    subtitle: 'Your FurPals account',
-  );
+        emoji: '😊',
+        title: 'Profile',
+        subtitle: 'Your FurPals account',
+      );
 }
 
 class _PlaceholderBody extends StatelessWidget {
   final String emoji, title, subtitle;
-  const _PlaceholderBody({
-    required this.emoji,
-    required this.title,
-    required this.subtitle,
-  });
+  const _PlaceholderBody({required this.emoji, required this.title, required this.subtitle});
 
   @override
   Widget build(BuildContext context) {
@@ -4037,23 +3346,13 @@ class _PlaceholderBody extends StatelessWidget {
           children: [
             Text(emoji, style: const TextStyle(fontSize: 64)),
             const SizedBox(height: 16),
-            Text(
-              title,
-              style: GoogleFonts.baloo2(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: FurPalsColors.textDark,
-              ),
-            ),
+            Text(title,
+                style: GoogleFonts.baloo2(
+                    fontSize: 28, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
             const SizedBox(height: 6),
-            Text(
-              subtitle,
-              style: GoogleFonts.nunito(
-                fontSize: 14,
-                color: FurPalsColors.textMid,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text(subtitle,
+                style: GoogleFonts.nunito(
+                    fontSize: 14, color: FurPalsColors.textMid, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
