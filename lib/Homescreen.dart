@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:gal/gal.dart';
+import 'package:furpals/settings.dart';
 
 class FurPalsColors {
   static const blush = Color(0xFFF9C8D0);
@@ -453,12 +454,13 @@ class FurPalsDrawer extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 30),
-                  _pill(
-                    context,
-                    Icons.settings_rounded,
-                    'Settings',
-                    () => Navigator.pop(context),
-                  ),
+                _pill(context, Icons.settings_rounded, 'Settings', () {
+  Navigator.pop(context); // close drawer muna
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+  );
+}),
                   const SizedBox(height: 12),
                   _pill(
                     context,
