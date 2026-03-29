@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:furpals/lf_add_missing.dart';
 import 'package:furpals/lost&found.dart';
 import 'package:furpals/lostfoundprofile.dart';
 import 'package:furpals/signup.dart';
@@ -61,6 +62,7 @@ class MyApp extends StatelessWidget {
         '/notifications': (context) => const NotificationScreen(),
         '/lf':(context) => const LostFoundScreen(),
         '/lostandfoundprofile': (context)=> const LostFoundProfileScreen(pet: {},),
+        '/missing': (context) => const AddMissingPetScreen(),
       },
     );
   }

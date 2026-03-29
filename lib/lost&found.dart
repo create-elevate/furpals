@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:furpals/Homescreen.dart'; // FurPalsColors
 import 'package:furpals/lostfoundprofile.dart';
+import 'package:furpals/lf_add_missing.dart';
 
-// ── LOST & FOUND SCREEN ───────────────────────────────────────────────────────
+// LOST & FOUND SCREEN 
 class LostFoundScreen extends StatefulWidget {
   const LostFoundScreen({super.key});
 
@@ -70,7 +71,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     );
   }
 
-  // ── TOP BAR ───────────────────────────────────────────────────────────────
+  // TOP BAR 
   Widget _buildTopBar(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -125,7 +126,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     );
   }
 
-  // ── TITLE ─────────────────────────────────────────────────────────────────
+  // TITLE 
   Widget _buildTitle() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -138,7 +139,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     );
   }
 
-  // ── LOCATION ──────────────────────────────────────────────────────────────
+  //LOCATION 
   Widget _buildLocation() {
     return Row(
       children: [
@@ -150,7 +151,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     );
   }
 
-  // ── SEARCH BAR ────────────────────────────────────────────────────────────
+  //  SEARCH BAR 
   Widget _buildSearchBar() {
     return Container(
       height: 48,
@@ -173,7 +174,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     );
   }
 
-  // ── FILTER ROW ────────────────────────────────────────────────────────────
+  // FILTER ROW 
   Widget _buildFilterRow() {
     return Row(
       children: [
@@ -223,7 +224,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     );
   }
 
-  // ── PET GRID ──────────────────────────────────────────────────────────────
+  // PET GRID 
   Widget _buildPetGrid() {
     return GridView.count(
       crossAxisCount: 2,
@@ -241,7 +242,10 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
 
   Widget _buildAddCard() {
     return GestureDetector(
-      onTap: () {},
+    onTap: () => Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddMissingPetScreen()),
+    ),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
