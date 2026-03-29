@@ -70,9 +70,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   bool _showPass  = false;
   bool _isLoading = false;
-  bool _eulaOk    = true;
-  bool _termsOk   = true;
-  bool _privacyOk = true;
+  bool _eulaOk    = false;
+  bool _termsOk   = false;
+  bool _privacyOk = false;
 
   String? _nameErr, _emailErr, _nickErr, _passErr;
 
