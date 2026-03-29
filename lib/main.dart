@@ -10,6 +10,9 @@ import 'package:furpals/Homescreen.dart';
 import 'package:furpals/splash_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:furpals/NotificationScreen.dart';
+import 'package:furpals/petmanagement.dart';
+import 'package:furpals/newappointment.dart';
+import 'package:furpals/addevent.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -63,7 +66,21 @@ class MyApp extends StatelessWidget {
         '/lf':(context) => const LostFoundScreen(),
         '/lostandfoundprofile': (context)=> const LostFoundProfileScreen(pet: {},),
         '/missing': (context) => const AddMissingPetScreen(),
+      '/petmanagement': (context) => const PetsScreen(),
+    '/newappointment': (context) => const CalendarScreen(
+  pets: [],
+  existingAppointmentCount: 0,
+),
+    '/addevent': (context) => AddEventScreen(
+  existingEventCount: 0,
+  onAdd: (newEvent) {
+    
+  },
+  onUpdate: (updatedEvent) {
+    
+  },
+),  
       },
-    );
+);
   }
 }

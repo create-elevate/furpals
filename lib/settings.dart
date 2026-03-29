@@ -140,7 +140,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // ── PREFERENCES ──────────────────────────────────────
                     _sectionLabel('Preferences'),
                     _settingsCard([
-                      _divider(),
                       _navTile(
                         icon: Icons.language_rounded,
                         iconBg: const Color(0xFFD4EBF2),

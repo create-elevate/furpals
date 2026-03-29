@@ -18,8 +18,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _rememberMe      = false;
   bool _isLoading       = false;
-  bool _emailError      = false;
-  bool _passwordError   = false;
 
   @override
   void dispose() {
@@ -33,32 +31,15 @@ class _LoginScreenState extends State<LoginScreen> {
     final email    = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    // Reset errors
-    setState(() {
-      _emailError    = false;
-      _passwordError = false;
-    });
-
-    // Validate empty fields
-    if (email.isEmpty && password.isEmpty) {
-      setState(() { _emailError = true; _passwordError = true; });
+    if (email.isEmpty || password.isEmpty) {
       _showSnack('Please enter your email and password.');
-      return;
-    }
-    if (email.isEmpty) {
-      setState(() => _emailError = true);
-      _showSnack('Please enter your email or username.');
-      return;
-    }
-    if (password.isEmpty) {
-      setState(() => _passwordError = true);
-      _showSnack('Please enter your password.');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
+      // Sign in with Firebase Authentication
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
@@ -80,31 +61,16 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
-
     } on FirebaseAuthException catch (e) {
       final msg = switch (e.code) {
-        'invalid-credential'      => 'Invalid email or password. Please try again.',
-        'user-not-found'          => 'No account found with that email.',
-        'wrong-password'          => 'Incorrect password. Please try again.',
-        'invalid-email'           => 'Please enter a valid email address.',
-        'user-disabled'           => 'This account has been disabled.',
-        'too-many-requests'       => 'Too many attempts. Please try again later.',
-        'network-request-failed'  => 'No internet connection.',
-        _                         => 'Login failed: ${e.message ?? e.code}',
+        'user-not-found'   => 'No account found with that email.',
+        'wrong-password'   => 'Incorrect password. Please try again.',
+        'invalid-email'    => 'Please enter a valid email address.',
+        'user-disabled'    => 'This account has been disabled.',
+        'too-many-requests'=> 'Too many attempts. Please try again later.',
+        _                  => e.message ?? 'Login failed. Please try again.',
       };
-
-      // Highlight the correct field in red
-      setState(() {
-        if (['user-not-found', 'invalid-email', 'invalid-credential'].contains(e.code)) {
-          _emailError = true;
-        }
-        if (['wrong-password', 'invalid-credential'].contains(e.code)) {
-          _passwordError = true;
-        }
-      });
-
       if (mounted) _showSnack(msg);
-
     } catch (e) {
       if (mounted) _showSnack('Something went wrong. Please try again.');
     } finally {
@@ -135,6 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ── FORGOT PASSWORD ────────────────────────────────────────────────────────
+  //  FORGOT PASSWORD 
   void _showForgotPassword() {
     final prefill = _emailController.text.trim();
     final forgotController = TextEditingController(text: prefill);
@@ -160,6 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // drag handle
                     Center(
                       child: Container(
                         width: 40, height: 4,
@@ -181,6 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontSize: 14, color: Colors.grey.shade500)),
                       const SizedBox(height: 10),
 
+                      // Email field
                       Container(
                         decoration: BoxDecoration(
                           color: const Color(0xFFD9EEF3),
@@ -189,8 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Row(
                           children: [
-                            const Icon(Icons.email_outlined,
-                                color: Colors.grey, size: 20),
+                            const Icon(Icons.email_outlined, color: Colors.grey, size: 20),
                             const SizedBox(width: 10),
                             Expanded(
                               child: TextField(
@@ -212,6 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 12),
 
+                      // Send button
                       SizedBox(
                         width: double.infinity, height: 52,
                         child: ElevatedButton(
@@ -231,6 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   }
                                   setModal(() => sending = true);
                                   try {
+                                    // Firebase sends the real reset email
                                     await FirebaseAuth.instance
                                         .sendPasswordResetEmail(email: em);
                                     setModal(() { sending = false; sent = true; });
@@ -269,6 +239,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ] else ...[
+                      //  SUCCESS STATE 
                       const SizedBox(height: 10),
                       Center(
                         child: Container(
@@ -342,7 +313,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── TOP SECTION ────────────────────────────────────────────────────────────
+  //TOP SECTION — tricolor gradient 
   Widget _buildTopSection(double height) {
     return Container(
       width: double.infinity, height: height,
@@ -398,7 +369,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── BOTTOM SECTION ─────────────────────────────────────────────────────────
+  // BOTTOM SECTION — white form 
   Widget _buildBottomSection() {
     return Container(
       color: Colors.white,
@@ -417,8 +388,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
           Text('Email or Username',
               style: GoogleFonts.josefinSans(
-                  fontSize: 13, fontWeight: FontWeight.w700,
-                  color: Colors.black87)),
+                  fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87)),
           const SizedBox(height: 8),
           _buildInputField(
             controller: _emailController,
@@ -426,19 +396,17 @@ class _LoginScreenState extends State<LoginScreen> {
             prefixAsset: 'assets/icons/email_icon.png',
             fallbackIcon: Icons.mail_outline,
             keyboardType: TextInputType.emailAddress,
-            hasError: _emailError,
           ),
           const SizedBox(height: 10),
 
           Text('Enter password',
               style: GoogleFonts.josefinSans(
-                  fontSize: 13, fontWeight: FontWeight.w700,
-                  color: Colors.black87)),
+                  fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87)),
           const SizedBox(height: 8),
-          _buildPasswordField(hasError: _passwordError),
+          _buildPasswordField(),
           const SizedBox(height: 12),
 
-          // Remember me + Forgot password
+          // Remember me + Forgot
           Row(
             children: [
               GestureDetector(
@@ -449,8 +417,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: 22, height: 22,
                       decoration: BoxDecoration(
                         color: _rememberMe
-                            ? const Color(0xFFE8445A)
-                            : Colors.grey.shade200,
+                            ? const Color(0xFFE8445A) : Colors.grey.shade200,
                         shape: BoxShape.circle,
                       ),
                       child: _rememberMe
@@ -560,51 +527,34 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── INPUT FIELD ────────────────────────────────────────────────────────────
+  //  INPUT FIELD 
   Widget _buildInputField({
     required TextEditingController controller,
     required String hint,
     required String prefixAsset,
     required IconData fallbackIcon,
     TextInputType keyboardType = TextInputType.text,
-    bool hasError = false,
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: hasError ? const Color(0xFFFFE4E4) : const Color(0xFFD9EEF3),
-        borderRadius: BorderRadius.circular(30),
-        border: hasError
-            ? Border.all(color: const Color(0xFFE8445A), width: 1.5)
-            : null,
-      ),
+          color: const Color(0xFFD9EEF3),
+          borderRadius: BorderRadius.circular(30)),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           Image.asset(prefixAsset, width: 22, height: 22,
-              errorBuilder: (_, __, ___) => Icon(fallbackIcon,
-                  color: hasError ? const Color(0xFFE8445A) : Colors.black,
-                  size: 22)),
+              errorBuilder: (_, __, ___) =>
+                  Icon(fallbackIcon, color: Colors.black, size: 22)),
           const SizedBox(width: 10),
           Expanded(
             child: TextField(
               controller: controller,
               keyboardType: keyboardType,
-              onChanged: (_) {
-                if (_emailError || _passwordError) {
-                  setState(() {
-                    _emailError    = false;
-                    _passwordError = false;
-                  });
-                }
-              },
               style: GoogleFonts.josefinSans(fontSize: 14),
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: GoogleFonts.josefinSans(
-                    color: hasError
-                        ? const Color(0xFFE8445A).withOpacity(0.6)
-                        : Colors.grey.shade700,
-                    fontSize: 14),
+                    color: Colors.grey.shade700, fontSize: 14),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 14),
               ),
@@ -616,40 +566,27 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ── PASSWORD FIELD ─────────────────────────────────────────────────────────
-  Widget _buildPasswordField({bool hasError = false}) {
+  Widget _buildPasswordField() {
     return Container(
       decoration: BoxDecoration(
-        color: hasError ? const Color(0xFFFFE4E4) : const Color(0xFFD9EEF3),
-        borderRadius: BorderRadius.circular(30),
-        border: hasError
-            ? Border.all(color: const Color(0xFFE8445A), width: 1.5)
-            : null,
-      ),
+          color: const Color(0xFFD9EEF3),
+          borderRadius: BorderRadius.circular(30)),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           Image.asset('assets/icons/password_icon.png', width: 22, height: 22,
-              errorBuilder: (_, __, ___) => Icon(Icons.key_outlined,
-                  color: hasError ? const Color(0xFFE8445A) : Colors.black,
-                  size: 22)),
+              errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.key_outlined, color: Colors.black, size: 22)),
           const SizedBox(width: 10),
           Expanded(
             child: TextField(
               controller: _passwordController,
               obscureText: _obscurePassword,
-              onChanged: (_) {
-                if (_passwordError) {
-                  setState(() => _passwordError = false);
-                }
-              },
               style: GoogleFonts.josefinSans(fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Enter password',
                 hintStyle: GoogleFonts.josefinSans(
-                    color: hasError
-                        ? const Color(0xFFE8445A).withOpacity(0.6)
-                        : Colors.grey.shade700,
-                    fontSize: 14),
+                    color: Colors.grey.shade700, fontSize: 14),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 14),
               ),
@@ -661,15 +598,14 @@ class _LoginScreenState extends State<LoginScreen> {
               _obscurePassword
                   ? Icons.visibility_outlined
                   : Icons.visibility_off_outlined,
-              color: hasError ? const Color(0xFFE8445A) : Colors.grey.shade700,
-              size: 22),
+              color: Colors.grey.shade700, size: 22),
           ),
         ],
       ),
     );
   }
 
-  // ── SOCIAL BUTTON ──────────────────────────────────────────────────────────
+  //  SOCIAL BUTTON 
   Widget _socialButton({
     required String assetPath,
     required Color fallbackColor,
@@ -698,7 +634,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── GOOGLE BUTTON ──────────────────────────────────────────────────────────
+  // GOOGLE BUTTON 
   Widget _googleButton() {
     return GestureDetector(
       onTap: () {},
@@ -724,7 +660,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ── GOOGLE LOGO PAINTER ────────────────────────────────────────────────────────
+//  GOOGLE LOGO PAINTER 
 class _GoogleLogoPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -765,7 +701,7 @@ class _GoogleLogoPainter extends CustomPainter {
   bool shouldRepaint(_) => false;
 }
 
-// ── CURVE PAINTER ──────────────────────────────────────────────────────────────
+// CURVE PAINTER 
 class _CurveClipper extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
