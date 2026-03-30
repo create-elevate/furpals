@@ -1,7 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:furpals/lf_add_missing.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:furpals/Homescreen.dart'; // FurPalsColors
-import 'package:furpals/lostfoundprofile.dart';
+import 'package:furpals/NotificationScreen.dart';
+import 'package:furpals/lost&found.dart';
+import 'package:furpals/Homescreen.dart';
+
+class FurPalsColors {
+  static const blush       = Color(0xFFF9C8D0);
+  static const peach       = Color(0xFFFFD9C0);
+  static const mint        = Color(0xFFC5EDD6);
+  static const lavender    = Color(0xFFDDD0F5);
+  static const butter      = Color(0xFFFFF3C4);
+  static const cream       = Color(0xFFFFF8F2);
+  static const warmWhite   = Color(0xFFFFFAF6);
+  static const textDark    = Color(0xFF4A3728);
+  static const textMid     = Color(0xFF7A6055);
+  static const textSoft    = Color(0x66000000);
+  static const pink        = Color(0xFFF4738A);
+  static const pinkLight   = Color(0xFFFF9AB0);
+  static const green       = Color(0xFF5DB87A);
+  static const purple      = Color(0xFF8B6FD4);
+  static const shadow      = Color(0x20B47864);
+  static const creamwhite  = Color(0xFFF9E9D5);
+  static const blue        = Color(0xFF448AFF);
+  static const heartRed    = Color(0xFFE53935);
+  static const black100    = Color(0xFF000000);
+}
+
+// The background gradient 
+const appBackgroundGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  stops: [0.0, 0.5, 1.0], 
+  colors: [
+    Color(0xFFFCDDE8), 
+    Color(0xFFFFE8D2),
+    Color(0xFFD4F0E4), 
+  ],
+);
+
+
 
 // ── LOST & FOUND SCREEN ───────────────────────────────────────────────────────
 class LostFoundScreen extends StatefulWidget {
@@ -11,10 +49,13 @@ class LostFoundScreen extends StatefulWidget {
   State<LostFoundScreen> createState() => _LostFoundScreenState();
 }
 
+
 class _LostFoundScreenState extends State<LostFoundScreen> {
   String _selectedFilter = 'DOG';
   final TextEditingController _searchController = TextEditingController();
+  bool _hasNewNotif = true;
 
+  
   final List<Map<String, dynamic>> _filters = [
     {'label': 'DOG',  'asset': 'assets/icons/dog_filter.png'},
     {'label': 'CAT',  'asset': 'assets/icons/cat_filter.png'},
@@ -26,6 +67,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     {'name': 'Pet Name', 'breed': 'pet breed', 'age': 'Age', 'gender': 'Gender', 'liked': false, 'image': null},
     {'name': 'Pet Name', 'breed': 'pet breed', 'age': 'Age', 'gender': 'Gender', 'liked': false, 'image': null},
   ];
+  
 
   @override
   void dispose() {
@@ -71,7 +113,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
   }
 
   // ── TOP BAR ───────────────────────────────────────────────────────────────
-  Widget _buildTopBar(BuildContext context) {
+   Widget _buildTopBar(BuildContext context) { // menu icon
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
@@ -84,15 +126,9 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: const [
-                    BoxShadow(color: FurPalsColors.shadow, blurRadius: 10, offset: Offset(0, 3)),
-                  ],
+                  boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 10, offset: Offset(0, 3))],
                 ),
-                child: Image.asset(
-                  'assets/icons/menu.png', width: 22, height: 22,
-                  errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.menu_rounded, size: 20, color: FurPalsColors.textDark),
-                ),
+                child: const Center(child: Icon(Icons.menu_rounded, size: 20, color: FurPalsColors.textDark)),
               ),
             ),
           ),
@@ -100,31 +136,59 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
           Expanded(
             child: Row(
               children: [
-                Text(
-                  'Mickaluvsyou',
-                  style: GoogleFonts.nunito(
-                    fontSize: 17, fontWeight: FontWeight.w800, color: FurPalsColors.textDark,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Image.asset('assets/icons/paw_badge.png', width: 22, height: 22,
-                    errorBuilder: (_, __, ___) =>
-                        const Text('🐾', style: TextStyle(fontSize: 18))),
+                Text('Mickaluvsyou', // username display in top bar
+                    style: GoogleFonts.baloo2(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800,
+                      color: FurPalsColors.textDark,
+                    )),
+                const SizedBox(width: 10),
+                const Text('🐾', style: TextStyle(fontSize: 18)),
               ],
             ),
           ),
-          Container(
-            width: 40, height: 40,
-            decoration: const BoxDecoration(
-              color: FurPalsColors.heartRed, shape: BoxShape.circle,
+          GestureDetector(
+            onTap: () async {
+              setState(() => _hasNewNotif = false); // clear red dot
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationScreen()),
+              );
+            },
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration( // notif icon
+                    color: FurPalsColors.warmWhite,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const [BoxShadow(color: Color(0x40F4738A), blurRadius: 12, offset: Offset(0, 4))],
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.favorite_rounded, color: FurPalsColors.heartRed, size: 20),
+                  ),
+                ),
+                if (_hasNewNotif)
+                  Positioned( // notfi red notice
+                    top: -3, right: -3,
+                    child: Container(
+                      width: 12, height: 12,
+                      decoration: BoxDecoration(
+                        color: FurPalsColors.heartRed,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [BoxShadow(color: Color(0x55E53935), blurRadius: 4, offset: Offset(0, 1))],
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            child: const Icon(Icons.favorite, color: Colors.white, size: 20),
           ),
         ],
       ),
     );
   }
-
   // ── TITLE ─────────────────────────────────────────────────────────────────
   Widget _buildTitle() {
     return Row(
@@ -241,7 +305,12 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
 
   Widget _buildAddCard() {
     return GestureDetector(
-      onTap: () {},
+
+    onTap: () => Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddMissingPetScreen()),
+    ),
+  
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -260,78 +329,70 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
   }
 
   Widget _buildPetCard(Map<String, dynamic> pet) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => LostFoundProfileScreen(pet: pet),
-        ),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 8, offset: Offset(0, 2))],
       ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 8, offset: Offset(0, 2))],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  child: Container(
+                    width: double.infinity,
+                    color: FurPalsColors.blush.withOpacity(0.4),
+                    child: Center(
+                      child: Icon(Icons.pets, size: 36, color: FurPalsColors.pink.withOpacity(0.4)),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 8, right: 8,
+                  child: GestureDetector(
+                    onTap: () => setState(() => pet['liked'] = !(pet['liked'] as bool)),
                     child: Container(
-                      width: double.infinity,
-                      color: FurPalsColors.blush.withOpacity(0.4),
-                      child: Center(
-                        child: Icon(Icons.pets, size: 36, color: FurPalsColors.pink.withOpacity(0.4)),
+                      width: 30, height: 30,
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      child: Icon(
+                        (pet['liked'] as bool) ? Icons.favorite : Icons.favorite_border,
+                        size: 16, color: FurPalsColors.heartRed,
                       ),
                     ),
                   ),
-                  Positioned(
-                    top: 8, right: 8,
-                    child: GestureDetector(
-                      onTap: () => setState(() => pet['liked'] = !(pet['liked'] as bool)),
-                      child: Container(
-                        width: 30, height: 30,
-                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                        child: Icon(
-                          (pet['liked'] as bool) ? Icons.favorite : Icons.favorite_border,
-                          size: 16, color: FurPalsColors.heartRed,
-                        ),
-                      ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(pet['name'] as String,
+                        style: GoogleFonts.nunito(
+                            fontWeight: FontWeight.w800, fontSize: 12, color: FurPalsColors.textDark)),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text('(${pet['breed']})',
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.nunito(fontSize: 11, color: FurPalsColors.textMid)),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text('${pet['age']} | ${pet['gender']}',
+                    style: GoogleFonts.nunito(fontSize: 11, color: FurPalsColors.textMid)),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(pet['name'] as String,
-                          style: GoogleFonts.nunito(
-                              fontWeight: FontWeight.w800, fontSize: 12, color: FurPalsColors.textDark)),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text('(${pet['breed']})',
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.nunito(fontSize: 11, color: FurPalsColors.textMid)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text('${pet['age']} | ${pet['gender']}',
-                      style: GoogleFonts.nunito(fontSize: 11, color: FurPalsColors.textMid)),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
