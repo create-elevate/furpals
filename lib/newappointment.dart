@@ -5,11 +5,13 @@ import 'package:furpals/models.dart';
 class CalendarScreen extends StatefulWidget {
   final List<Pet> pets;
   final int existingAppointmentCount;
+  final Appointment? appointmentToEdit; // ← NEW: pass existing appt to edit
 
   const CalendarScreen({
     super.key,
     required this.pets,
     required this.existingAppointmentCount,
+    this.appointmentToEdit, // ← optional
   });
 
   @override
@@ -26,7 +28,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   static const int _pageMiddle = 1200;
   late PageController _pageController;
 
-  // Time state
   int _selectedHour   = 0;
   int _selectedMinute = 0;
   bool _isAM          = true;
@@ -55,13 +56,56 @@ class _CalendarScreenState extends State<CalendarScreen> {
   static const double _maxChildSize  = 1.0;
   static const double _initChildSize = 0.38;
 
+  // true = editing existing, false = creating new
+  bool get _isEditing => widget.appointmentToEdit != null;
+
   @override
   void initState() {
     super.initState();
     _selectedPetId = widget.pets.isNotEmpty ? widget.pets[0].id : 0;
-    final today = DateTime.now();
-    final base  = DateTime(2026, 3);
-    final diff  = (today.year - base.year) * 12 + (today.month - base.month);
+
+    final appt = widget.appointmentToEdit;
+
+    if (appt != null) {
+      // ── Pre-fill all fields from the existing appointment ──────────────────
+      _titleController.text = appt.title;
+      _vetController.text   = appt.vet == 'TBD' ? '' : appt.vet;
+      _notesController.text = appt.notes;
+      _type                 = appt.type;
+      _selectedPetId        = appt.petId;
+
+      // Parse date string e.g. "Apr 5, 2026"
+      try {
+        final parts = appt.date.replaceAll(',', '').split(' ');
+        final monthIdx = _months.indexWhere(
+            (m) => m.toLowerCase() == parts[0].toLowerCase().substring(0, 3));
+        final day  = int.parse(parts[1]);
+        final year = int.parse(parts[2]);
+        _selectedDate = DateTime(year, monthIdx + 1, day);
+        _focusedMonth = DateTime(year, monthIdx + 1);
+      } catch (_) {
+        _selectedDate = DateTime.now();
+        _focusedMonth = DateTime.now();
+      }
+
+      // Parse time string e.g. "10:00 AM"
+      try {
+        final timeParts = appt.time.split(' ');
+        final hm        = timeParts[0].split(':');
+        _isAM           = timeParts[1].toUpperCase() == 'AM';
+        _selectedHour   = int.parse(hm[0]) % 12; // store 0-11
+        _selectedMinute = int.parse(hm[1]);
+      } catch (_) {
+        _selectedHour   = 0;
+        _selectedMinute = 0;
+        _isAM           = true;
+      }
+    }
+
+    // Jump page controller to the correct month
+    final base = DateTime(2026, 3);
+    final diff = (_focusedMonth.year - base.year) * 12 +
+        (_focusedMonth.month - base.month);
     _pageController = PageController(initialPage: _pageMiddle + diff);
   }
 
@@ -122,19 +166,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return;
     }
 
-    final today   = DateTime.now();
-    final dateStr =
+    final today      = DateTime.now();
+    final dateStr    =
         '${_monthName(_selectedDate.month)} ${_selectedDate.day}, ${_selectedDate.year}';
-    final minute  = _selectedMinute.toString().padLeft(2, '0');
-    final ampm    = _isAM ? 'AM' : 'PM';
+    final minute     = _selectedMinute.toString().padLeft(2, '0');
+    final ampm       = _isAM ? 'AM' : 'PM';
     final displayHour = _selectedHour == 0 ? 12 : _selectedHour;
-    final timeStr = '$displayHour:$minute $ampm';
-    final isToday = _selectedDate.year  == today.year &&
-                    _selectedDate.month == today.month &&
-                    _selectedDate.day   == today.day;
+    final timeStr    = '$displayHour:$minute $ampm';
+    final isToday    = _selectedDate.year  == today.year &&
+                       _selectedDate.month == today.month &&
+                       _selectedDate.day   == today.day;
 
     final appt = Appointment(
-      id:     widget.existingAppointmentCount,
+      // Keep the original id when editing, use new count when creating
+      id:     _isEditing ? widget.appointmentToEdit!.id : widget.existingAppointmentCount,
       petId:  _selectedPetId,
       title:  _titleController.text.trim(),
       vet:    _vetController.text.isEmpty ? 'TBD' : _vetController.text,
@@ -142,7 +187,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       time:   timeStr,
       type:   _type,
       notes:  _notesController.text,
-      status: isToday ? 'today' : 'upcoming',
+      // Keep 'done' status if it was already done, otherwise recalculate
+      status: (_isEditing && widget.appointmentToEdit!.status == 'done')
+          ? 'done'
+          : isToday ? 'today' : 'upcoming',
     );
 
     Navigator.pop(context, appt);
@@ -155,7 +203,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // ── CALENDAR ────────────────────────────────────
+            // ── CALENDAR ──────────────────────────────────────────────────────
             Column(
               children: [
                 _buildTopBar(context),
@@ -195,7 +243,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ],
             ),
 
-            // ── DRAGGABLE BOTTOM SHEET ───────────────────────
+            // ── DRAGGABLE BOTTOM SHEET ────────────────────────────────────────
             DraggableScrollableSheet(
               controller: _sheetController,
               initialChildSize: _initChildSize,
@@ -250,7 +298,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               ),
                             ),
 
-                            // ── Form ────────────────────────
+                            // ── Form ──────────────────────────────────────────
                             Padding(
                               padding:
                                   const EdgeInsets.fromLTRB(20, 4, 20, 36),
@@ -260,7 +308,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   _buildSheetHeader(),
                                   const SizedBox(height: 20),
 
-                                  // Pet selector
                                   Text('PET',
                                       style: GoogleFonts.nunito(
                                           fontSize: 11,
@@ -271,17 +318,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   _buildPetSelector(),
                                   const SizedBox(height: 16),
 
-                                  // Vet / Clinic
                                   _formField('VET / CLINIC', _vetController,
                                       'Dr. Name or Clinic'),
                                   const SizedBox(height: 12),
 
-                                  // Type dropdown
                                   _dropdownField('TYPE', _type, _types,
                                       (v) => setState(() => _type = v!)),
                                   const SizedBox(height: 12),
 
-                                  // Notes
                                   _formField(
                                       'NOTES',
                                       _notesController,
@@ -289,11 +333,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                       maxLines: 3),
                                   const SizedBox(height: 22),
 
-                                  // Date & Time card
                                   _buildDateTimeCard(),
                                   const SizedBox(height: 28),
 
-                                  // Save button
                                   _buildSaveButton(),
                                 ],
                               ),
@@ -321,8 +363,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           GestureDetector(
             onTap: () => Navigator.pop(context),
             child: Container(
-              width: 40,
-              height: 40,
+              width: 40, height: 40,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -341,25 +382,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text('New Appointment',
-                style: GoogleFonts.baloo2(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black)),
+            child: Text(
+              // ← shows "Edit Appointment" when editing
+              _isEditing ? 'Edit Appointment' : 'New Appointment',
+              style: GoogleFonts.baloo2(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black),
+            ),
           ),
         ],
       ),
     );
   }
+
   Widget _buildMonthHeader() {
     return Row(
       children: [
         Text(
           '${_months[_focusedMonth.month - 1].toUpperCase()} ',
           style: GoogleFonts.josefinSans(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87),
+              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
         ),
         GestureDetector(
           onTap: _showYearPicker,
@@ -372,8 +415,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       fontWeight: FontWeight.bold,
                       color: Colors.black)),
               const SizedBox(width: 2),
-              const Icon(Icons.arrow_drop_down,
-                  color: Colors.black, size: 18),
+              const Icon(Icons.arrow_drop_down, color: Colors.black, size: 18),
             ],
           ),
         ),
@@ -387,8 +429,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -423,10 +464,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         setState(() {
                           _focusedMonth = newMonth;
                           _selectedDate = DateTime(
-                            year,
-                            _selectedDate.month,
-                            _selectedDate.day,
-                          );
+                              year, _selectedDate.month, _selectedDate.day);
                         });
                         _pageController.jumpToPage(_pageMiddle + diff);
                         Navigator.pop(context);
@@ -461,6 +499,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
     );
   }
+
   Widget _buildWeekdayRow() {
     const days = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
     return Row(
@@ -479,6 +518,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           .toList(),
     );
   }
+
   Widget _buildDayGridForMonth(DateTime month) {
     final firstDay    = DateTime(month.year, month.month, 1);
     final startOffset = firstDay.weekday - 1;
@@ -499,8 +539,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           _snapUp();
         },
         child: Container(
-          width: 36,
-          height: 44,
+          width: 36, height: 44,
           margin: const EdgeInsets.symmetric(vertical: 2),
           decoration: isSelected
               ? const BoxDecoration(
@@ -510,9 +549,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: Text('$day',
                 style: GoogleFonts.nunito(
                   fontSize: isSelected ? 16 : 15,
-                  fontWeight: isSelected
-                      ? FontWeight.w900
-                      : FontWeight.w500,
+                  fontWeight:
+                      isSelected ? FontWeight.w900 : FontWeight.w500,
                   color: isSelected ? Colors.white : Colors.black87,
                 )),
           ),
@@ -531,12 +569,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
     return Column(children: rows);
   }
+
   Widget _buildSheetHeader() {
     return Row(
       children: [
         Container(
-          width: 58,
-          height: 58,
+          width: 58, height: 58,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: const Color(0xFFFCE8ED),
@@ -586,8 +624,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
               margin: const EdgeInsets.only(right: 10),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: sel ? FurPalsColors.blush : Colors.white,
                 borderRadius: BorderRadius.circular(20),
@@ -660,7 +697,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _arrowBtn(Icons.chevron_left_rounded, () => _stepDay(-1)),
+                    _arrowBtn(Icons.chevron_left_rounded,  () => _stepDay(-1)),
                     Column(
                       children: [
                         Text(dayNum,
@@ -707,7 +744,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   children: [
                     _timeStepper(
                       value: hourStr,
-                      onUp: () => _stepHour(1),
+                      onUp:   () => _stepHour(1),
                       onDown: () => _stepHour(-1),
                     ),
                     Padding(
@@ -720,17 +757,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     _timeStepper(
                       value: minStr,
-                      onUp: () => _stepMinute(1),
+                      onUp:   () => _stepMinute(1),
                       onDown: () => _stepMinute(-1),
                     ),
                     const SizedBox(width: 16),
                     Column(
                       children: [
-                        _ampmBtn('AM', _isAM,
-                            () => setState(() => _isAM = true)),
+                        _ampmBtn('AM', _isAM,  () => setState(() => _isAM = true)),
                         const SizedBox(height: 6),
-                        _ampmBtn('PM', !_isAM,
-                            () => setState(() => _isAM = false)),
+                        _ampmBtn('PM', !_isAM, () => setState(() => _isAM = false)),
                       ],
                     ),
                   ],
@@ -747,8 +782,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 28,
-        height: 28,
+        width: 28, height: 28,
         decoration: BoxDecoration(
           color: FurPalsColors.blush,
           borderRadius: BorderRadius.circular(8),
@@ -768,8 +802,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         GestureDetector(
           onTap: onUp,
           child: Container(
-            width: 32,
-            height: 28,
+            width: 32, height: 28,
             decoration: BoxDecoration(
               color: FurPalsColors.blush,
               borderRadius: BorderRadius.circular(8),
@@ -788,8 +821,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         GestureDetector(
           onTap: onDown,
           child: Container(
-            width: 32,
-            height: 28,
+            width: 32, height: 28,
             decoration: BoxDecoration(
               color: FurPalsColors.blush,
               borderRadius: BorderRadius.circular(8),
@@ -843,18 +875,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ],
         ),
         child: Center(
-          child: Text('SAVE APPOINTMENT',
-              style: GoogleFonts.baloo2(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 1)),
+          child: Text(
+            // ← label changes based on mode
+            _isEditing ? 'SAVE CHANGES' : 'SAVE APPOINTMENT',
+            style: GoogleFonts.baloo2(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                letterSpacing: 1),
+          ),
         ),
       ),
     );
   }
 }
 
+// ── Shared form helpers ───────────────────────────────────────────────────────
 Widget _formField(
     String label, TextEditingController ctrl, String hint,
     {int maxLines = 1}) {
@@ -883,16 +919,13 @@ Widget _formField(
         fillColor: Colors.white,
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide:
-                const BorderSide(color: Color(0xFFF0E4DC), width: 1.5)),
+            borderSide: const BorderSide(color: Color(0xFFF0E4DC), width: 1.5)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide:
-                const BorderSide(color: Color(0xFFF0E4DC), width: 1.5)),
+            borderSide: const BorderSide(color: Color(0xFFF0E4DC), width: 1.5)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide:
-                const BorderSide(color: FurPalsColors.pink, width: 1.5)),
+            borderSide: const BorderSide(color: FurPalsColors.pink, width: 1.5)),
       ),
     ),
   ]);
@@ -927,16 +960,13 @@ Widget _dropdownField(String label, String value, List<String> options,
         fillColor: Colors.white,
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide:
-                const BorderSide(color: Color(0xFFF0E4DC), width: 1.5)),
+            borderSide: const BorderSide(color: Color(0xFFF0E4DC), width: 1.5)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide:
-                const BorderSide(color: Color(0xFFF0E4DC), width: 1.5)),
+            borderSide: const BorderSide(color: Color(0xFFF0E4DC), width: 1.5)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide:
-                const BorderSide(color: FurPalsColors.pink, width: 1.5)),
+            borderSide: const BorderSide(color: FurPalsColors.pink, width: 1.5)),
       ),
     ),
   ]);

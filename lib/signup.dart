@@ -161,14 +161,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  void _openLegal(String title, String content) {
-    showModalBottomSheet(
+ void _openLegal(String title, String content) {
+  showGeneralDialog(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: '',
+    barrierColor: Colors.black.withOpacity(0.5),
+    useRootNavigator: true,
+    transitionDuration: const Duration(milliseconds: 220),
+    transitionBuilder: (_, anim, __, child) => ScaleTransition(
+      scale: CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+      child: FadeTransition(opacity: anim, child: child),
+    ),
+    pageBuilder: (_, __, ___) => MediaQuery.removeViewInsets(
+      removeBottom: true,
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _LegalModal(title: title, content: content),
-    );
-  }
+      child: Align(
+        alignment: Alignment.center,
+        child: _LegalModal(title: title, content: content),
+      ),
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -554,129 +568,414 @@ class _LegalModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.80,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 1.5)),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            child: Text(title,
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth  = MediaQuery.of(context).size.width;
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: screenWidth * 0.88,
+        height: screenHeight * 0.68,
+        decoration: BoxDecoration(
+          color: _C.modalBg,
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: Colors.black, width: 2.5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
+          ],
+        ),
+        child: Column(
+          children: [
+            // ── Title ─────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 12),
+              child: Text(
+                title,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.baloo2(fontSize: 18, color: _C.dark)),
-          ),
-          Expanded(
-            child: Container(
-              color: _C.modalBg,
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(18)),
-                      padding: const EdgeInsets.all(18),
-                      child: SingleChildScrollView(
-                        child: Text(content,
-                            style: GoogleFonts.nunito(
-                                fontSize: 13.5, fontWeight: FontWeight.w500,
-                                color: const Color(0xFF555555), height: 1.7)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    child: Container(
-                      width: double.infinity, height: 50,
-                      decoration: BoxDecoration(
-                        color: _C.btnClose,
-                        borderRadius: BorderRadius.circular(50),
-                        border: Border.all(color: _C.dark, width: 2.5),
-                        boxShadow: const [
-                          BoxShadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 0),
-                        ],
-                      ),
-                      child: Center(
-                        child: Text('CLOSE',
-                            style: GoogleFonts.baloo2(
-                                fontSize: 16, letterSpacing: 2, color: _C.dark)),
-                      ),
-                    ),
-                  ),
-                ],
+                style: GoogleFonts.baloo2(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: _C.dark,
+                ),
               ),
             ),
-          ),
-        ],
+
+            // ── White scrollable content card ──────────────────
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.black, width: 2),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(18),
+                  child: SingleChildScrollView(
+                    child: _LegalText(content: content),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── CLOSE button ───────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  width: double.infinity,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: _C.btnClose,
+                    borderRadius: BorderRadius.circular(50),
+                    border: Border.all(color: _C.dark, width: 2.5),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      'CLOSE',
+                      style: GoogleFonts.baloo2(
+                        fontSize: 16,
+                        letterSpacing: 2,
+                        color: _C.dark,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _LegalText extends StatelessWidget {
+  final String content;
+  const _LegalText({required this.content});
+
+  static final _headingRx = RegExp(r'^\d+\.?\s+\S');
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = content.split('\n');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: lines.map((line) {
+        final trimmed = line.trim();
+
+        if (trimmed.isEmpty) {
+          return const SizedBox(height: 6);
+        }
+
+        final isHeading = _headingRx.hasMatch(trimmed);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text(
+            trimmed,
+            textAlign: TextAlign.justify,
+            style: GoogleFonts.nunito(
+              fontSize: 13.5,
+              fontWeight: isHeading ? FontWeight.w800 : FontWeight.w500,
+              color: isHeading
+                  ? const Color(0xFF222222)
+                  : const Color(0xFF555555),
+              height: 1.5,
+              letterSpacing: isHeading ? 0.2 : 0,
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }
 
 // ── LEGAL TEXT ─────────────────────────────────────────────────────────────────
 const _eulaText = '''
-1. Acceptance of Terms
-By creating an account on furpals, you agree to be bound by this End-User License Agreement. If you do not agree, please do not use the application.
+Last Updated: March 01, 2026
 
-2. License Grant
-furpals grants you a limited, non-exclusive, non-transferable license to use the application solely for personal, non-commercial purposes.
+This End User License Agreement is between you and MRLD Tech Solutions and explains how you may use the FurPals mobile application.
 
-3. Restrictions
-You may not copy, modify, distribute, sell, or lease any part of our services. Reverse engineering or extracting source code is prohibited.
+By downloading or using FurPals, you agree to follow this Agreement. If you do not agree, please do not use the app.
 
-4. Content Ownership
-You retain ownership of content you post. By posting, you grant furpals a license to display and distribute your content within the platform.
 
-5. Termination
-This license terminates if you violate any of these restrictions. Upon termination you must cease all use of the application.
+
+
+
+1. License to Use
+We grant you a limited, personal, non-exclusive, and non-transferable right to use FurPals for personal and non-commercial purposes only.
+
+You do not own the app. You are only permitted to use it in accordance with this Agreement.
+
+
+
+
+
+
+2. Restrictions
+You agree that you will not:
+
+- Use the app for illegal, abusive, or harmful activities
+
+- Share your login credentials with others
+
+- Access accounts that do not belong to you
+
+Violation of these rules may result in account suspension or termination.
+
+
+
+
+
+3. Accounts
+You must provide accurate information when creating an account and keep your login credentials secure. You are responsible for all activities under your account.
+
+
+
+
+
+
+4. Updates
+We may release updates to improve performance, security, or features such as pet profiles and messaging. Some updates may be required to continue using the app.
+
+
+
+
+
+
+5. Ownership
+All rights to FurPals, including its design, logo, features, and system, belong to MRLD Tech Solutions. Unauthorized use is prohibited.
+
+
+
+
+
 
 6. Disclaimer
-The application is provided "as is" without warranties of any kind, either express or implied.
+FurPals is provided “as is.”
+We do not guarantee that the app will always be uninterrupted, secure, or error-free.
+
+
+
+
+
+7. Limitation of Liability
+We are not responsible for user interactions, content shared within the app, or decisions made based on such content.
+
+
+
+
+
+8. Termination
+You may stop using FurPals at any time. We may suspend or remove accounts that violate this Agreement.
+
+
+
+
+
+9. Governing Law
+This Agreement shall be governed by and construed in accordance with the laws of the Republic of the Philippines, including but not limited to the Civil Code of the Philippines (Republic Act No. 386), the Electronic Commerce Act of 2000 (Republic Act No. 8792), the Data Privacy Act of 2012 (Republic Act No. 10173) and its Implementing Rules and Regulations, the Cybercrime Prevention Act of 2012 (Republic Act No. 10175), the Intellectual Property Code of the Philippines (Republic Act No. 8293), and all other applicable laws, rules, regulations, and issuances of relevant Philippine government authorities.
+
+
+
+
+
+10. Contact
+MRLD Tech Solutions
+Dasmariñas City, Cavite, Philippines
+mrldtechsolutions.support@gmail.com
 ''';
 
 const _termsText = '''
-1. Eligibility
-You must be at least 13 years old to use furpals. By using our services, you represent that you meet this requirement.
+Last Updated: March 01, 2026
 
-2. Your Account
-You are responsible for maintaining the confidentiality of your account credentials and for all activities under your account.
+FurPals is a social media and pet management platform designed for pets and furparents.
 
-3. Community Guidelines
-Be kind and respectful to all pet lovers. Content promoting animal abuse, harassment, or hate speech will result in immediate account termination.
+By using FurPals, you agree to these Terms and the Community Guidelines below.
 
-4. Prohibited Activities
-Spamming, phishing, impersonating other users, or attempting to access other accounts are strictly prohibited.
 
-5. Modifications
-We reserve the right to modify these terms at any time. Continued use constitutes acceptance of updated terms.
+
+
+
+1. Purpose of the App
+
+FurPals allows users to:
+
+- Create and manage pet profiles
+- Share pet-related updates and photos
+- Connect and message other furparents
+- Store and organize pet information
+
+The platform is intended for personal use only.
+
+
+
+
+
+2. User Accounts
+
+You agree to:
+
+- Provide truthful and accurate information
+- Maintain the security of your account
+- Take responsibility for all activities under your account
+
+We may suspend or terminate accounts that violate these Terms.
+
+
+
+
+
+
+3. User Content
+You are responsible for the content you post, including photos, captions, and messages.
+
+By posting content, you grant FurPals permission to display and distribute it within the platform for normal operation.
+
+
+
+
+
+4. Compliance
+All users must follow the Community Guidelines. Failure to comply may result in content removal or account suspension.
+
+
+
+
+
+
+5. Service Availability
+We strive to maintain reliable service. However, temporary downtime may occur due to maintenance or technical issues.
+
+
+
+
+
+
+6. Disclaimer
+FurPals provides a platform for connection and sharing.
+
+We do not guarantee the accuracy of user-generated content or advice shared by users.
+
+
+
+
+
+
+7. Termination
+We reserve the right to suspend or permanently terminate accounts that violate these Terms.
+
+
+
+
+
+
+8. Governing Law
+This Agreement shall be governed by and construed in accordance with the laws of the Republic of the Philippines, including but not limited to the Civil Code of the Philippines (Republic Act No. 386), the Electronic Commerce Act of 2000 (Republic Act No. 8792), the Data Privacy Act of 2012 (Republic Act No. 10173) and its Implementing Rules and Regulations, the Cybercrime Prevention Act of 2012 (Republic Act No. 10175), the Intellectual Property Code of the Philippines (Republic Act No. 8293), and all other applicable laws, rules, regulations, and issuances of relevant Philippine government authorities.
+Any dispute, claim, or controversy arising out of or in connection with this Agreement shall be subject to the exclusive jurisdiction of the proper courts of the Republic of the Philippines.
+
+
+
+
+
+
+9. Contact
+MRLD Tech Solutions
+Dasmariñas City, Cavite, Philippines
+mrldtechsolutions.support@gmail.com
+
 ''';
 
 const _privacyText = '''
-1. Information We Collect
-We collect information you provide (name, email, nickname) and usage data to improve our service.
+Last Updated: March 01, 2026
 
-2. How We Use It
-Your information personalizes furpals, enables notifications, and helps us improve features.
+This Privacy Policy explains how FurPals collects, uses, and protects your personal information.
+
+By using FurPals, you agree to this Privacy Policy.
+
+
+
+
+
+
+1. Information We Collect
+We may collect:
+  - Name
+  - Email address
+  - Profile details
+  - Pet information such as name, breed, age, and photos
+  - Messages and posts
+
+We may also collect basic app usage data through service providers.
+
+
+
+
+
+
+2. How We Use Information
+We use information to:
+
+  - Create and manage accounts
+  - Enable pet profiles and social interaction
+  - Improve app features
+  - Maintain security
+  - Respond to support inquiries
+
+We do not sell your personal data.
+
+
+
+
+
 
 3. Data Sharing
-We do not sell your personal data. We may share anonymized data for analytics purposes.
+We may use trusted third-party services for hosting and authentication. We may disclose information if required by law.
+
+
+
+
+
 
 4. Data Security
-We implement industry-standard security measures to protect your data.
+We implement reasonable safeguards to protect your information.
+
+However, no online platform can guarantee complete security.
+
+
+
+
+
 
 5. Your Rights
-You may request access to, correction of, or deletion of your data at any time by contacting support.
+You may request to access, update, or delete your personal information by contacting us.
 
-6. Cookies
-We use cookies to maintain your session and preferences.
+
+
+
+
+
+6. Data Privacy Act of 2012
+FurPals complies with the Data Privacy Act of 2012 of the Philippines. We process personal data according to the principles of transparency, legitimate purpose, and proportionality.
+
+
+
+
+
+7. Changes to This Policy
+We may update this policy when necessary. Continued use of the app indicates acceptance of the updated policy.
+
+8. Contact
+MRLD Tech Solutions
+Dasmariñas City, Cavite, Philippines
+mrldtechsolutions.support@gmail.com
 ''';

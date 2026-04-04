@@ -84,10 +84,6 @@ final List<Appointment> sampleAppointments = [
 ];
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
-// IMPORTANT: No Scaffold here. PetsScreen lives inside MainShell's Scaffold,
-// which already has FurPalsDrawer registered. The hamburger button uses
-// Scaffold.of(ctx).openDrawer() to reach that parent drawer — full-width,
-// no clipping, identical to the home screen behaviour.
 class PetsScreen extends StatefulWidget {
   const PetsScreen({super.key});
   @override
@@ -152,6 +148,10 @@ class _PetsScreenState extends State<PetsScreen> {
     if (idx != -1) _pets[idx] = p;
   });
   void _addAppointment(Appointment a) => setState(() => _appointments.insert(0, a));
+  void _updateAppointment(Appointment a) => setState(() {
+    final idx = _appointments.indexWhere((x) => x.id == a.id);
+    if (idx != -1) _appointments[idx] = a;
+  });
 
   void _addEvent(PetEvent newEvent) {
     setState(() {
@@ -209,9 +209,48 @@ class _PetsScreenState extends State<PetsScreen> {
   }
 
   void _openAppointmentDetail(Appointment appointment, Pet pet) {
-    showModalBottomSheet(
-      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (_) => _AppointmentDetailSheet(appointment: appointment, pet: pet),
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black.withOpacity(0.50),
+      useRootNavigator: true,
+      transitionDuration: const Duration(milliseconds: 220),
+      transitionBuilder: (_, anim, __, child) => ScaleTransition(
+        scale: CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+        child: FadeTransition(opacity: anim, child: child),
+      ),
+      pageBuilder: (_, __, ___) => MediaQuery.removeViewInsets(
+        removeBottom: true,
+        context: context,
+        child: Align(
+          alignment: Alignment.center,
+          child: _AppointmentDetailModal(
+            appointment: appointment,
+            pet: pet,
+            onMarkDone: _updateAppointment,
+            onEdit: (appt) {
+              // 1. close the detail modal
+              Navigator.of(context, rootNavigator: true).pop();
+              // 2. open CalendarScreen with existing data pre-filled
+              Future.delayed(const Duration(milliseconds: 150), () async {
+                final result = await Navigator.push<Appointment>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CalendarScreen(
+                      pets: _pets,
+                      existingAppointmentCount: _appointments.length,
+                      appointmentToEdit: appt, // ← pre-fills all fields
+                    ),
+                  ),
+                );
+                // 3. if user saved, update the list
+                if (result != null) _updateAppointment(result);
+              });
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -256,10 +295,6 @@ class _PetsScreenState extends State<PetsScreen> {
     );
   }
 
-  // ── Top Bar ──────────────────────────────────────────────────────────────────
-  // • Shows the logged-in user's displayName (not a hardcoded "My Pets" string)
-  // • Hamburger reaches the PARENT Scaffold's drawer via Scaffold.of(ctx)
-  // • Heart icon has a live unread-notification dot from Firestore
   Widget _buildTopBar() {
     final user        = FirebaseAuth.instance.currentUser;
     final displayName = user?.displayName ?? 'FurPals User';
@@ -274,13 +309,9 @@ class _PetsScreenState extends State<PetsScreen> {
               .snapshots(),
       builder: (context, snapshot) {
         final hasUnread = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
-
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Row(children: [
-
-            // Hamburger — Scaffold.of(ctx) climbs up to MainShell's Scaffold
-            // and opens its FurPalsDrawer, which is already full-width & unclipped.
             Builder(
               builder: (ctx) => GestureDetector(
                 onTap: () => Scaffold.of(ctx).openDrawer(),
@@ -300,28 +331,19 @@ class _PetsScreenState extends State<PetsScreen> {
               ),
             ),
             const SizedBox(width: 12),
-
-            // Real user display name — matches HomeBody exactly
             Expanded(
               child: Row(children: [
                 Flexible(
-                  child: Text(
-                    displayName,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                  child: Text(displayName,
+                    overflow: TextOverflow.ellipsis, maxLines: 1,
                     style: GoogleFonts.baloo2(
-                      fontSize: 25,
-                      fontWeight: FontWeight.w800,
-                      color: FurPalsColors.textDark,
-                    ),
+                      fontSize: 25, fontWeight: FontWeight.w800, color: FurPalsColors.textDark),
                   ),
                 ),
                 const SizedBox(width: 6),
                 const Text('🐾', style: TextStyle(fontSize: 18)),
               ]),
             ),
-
-            // Heart / notification button with live red dot
             GestureDetector(
               onTap: () async {
                 await Navigator.push(
@@ -363,7 +385,6 @@ class _PetsScreenState extends State<PetsScreen> {
                 ],
               ),
             ),
-
           ]),
         );
       },
@@ -376,15 +397,13 @@ class _PetsScreenState extends State<PetsScreen> {
         shaderCallback: (b) => const LinearGradient(
             colors: [FurPalsColors.pink, FurPalsColors.pinkLight]).createShader(b),
         child: Text('Pet ',
-            style: GoogleFonts.baloo2(
-                fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
+            style: GoogleFonts.baloo2(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
       ),
       ShaderMask(
         shaderCallback: (b) => const LinearGradient(
             colors: [FurPalsColors.green, Color(0xFF3DA864)]).createShader(b),
         child: Text('Management',
-            style: GoogleFonts.baloo2(
-                fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
+            style: GoogleFonts.baloo2(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
       ),
       const SizedBox(width: 6),
       const Text('🐾', style: TextStyle(fontSize: 20)),
@@ -397,9 +416,7 @@ class _PetsScreenState extends State<PetsScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFF0E4DC), width: 1.5),
-        boxShadow: const [
-          BoxShadow(color: FurPalsColors.shadow, blurRadius: 4, offset: Offset(0, 3))
-        ],
+        boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 4, offset: Offset(0, 3))],
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
       child: Row(children: [
@@ -411,8 +428,7 @@ class _PetsScreenState extends State<PetsScreen> {
             hintText: 'Search pets or appointments...',
             hintStyle: GoogleFonts.nunito(
                 color: FurPalsColors.textSoft, fontSize: 13, fontWeight: FontWeight.w500),
-            border: InputBorder.none,
-            isDense: true,
+            border: InputBorder.none, isDense: true,
             contentPadding: const EdgeInsets.symmetric(vertical: 10),
           ),
           style: GoogleFonts.nunito(
@@ -438,15 +454,12 @@ class _PetsScreenState extends State<PetsScreen> {
             scrollDirection: Axis.horizontal,
             children: [
               GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AddEventScreen(
-                      existingEventCount: _events.length,
-                      onAdd: _addEvent, onUpdate: _updateEvent,
-                    ),
+                onTap: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => AddEventScreen(
+                    existingEventCount: _events.length,
+                    onAdd: _addEvent, onUpdate: _updateEvent,
                   ),
-                ),
+                )),
                 child: Container(
                   width: 300, height: 200,
                   margin: const EdgeInsets.only(right: 12),
@@ -482,9 +495,7 @@ class _PetsScreenState extends State<PetsScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         gradient: (event.photoPath == null || event.photoPath!.isEmpty)
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+            ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
                 colors: [event.color1, event.color2])
             : null,
       ),
@@ -495,15 +506,12 @@ class _PetsScreenState extends State<PetsScreen> {
         else
           Center(child: Text(event.emoji, style: const TextStyle(fontSize: 60))),
         if (event.isOwner)
-          Positioned(
-            top: 8, right: 8,
+          Positioned(top: 8, right: 8,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                  color: FurPalsColors.pink, borderRadius: BorderRadius.circular(20)),
+              decoration: BoxDecoration(color: FurPalsColors.pink, borderRadius: BorderRadius.circular(20)),
               child: Text('My Event',
-                  style: GoogleFonts.nunito(
-                      fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white)),
+                  style: GoogleFonts.nunito(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           ),
         Positioned(
@@ -516,30 +524,25 @@ class _PetsScreenState extends State<PetsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(event.title,
-                  style: GoogleFonts.nunito(
-                      fontSize: 13, fontWeight: FontWeight.w800, color: FurPalsColors.textDark),
+                  style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w800, color: FurPalsColors.textDark),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
               Text('${event.date} · ${event.location}',
-                  style: GoogleFonts.nunito(
-                      fontSize: 11, fontWeight: FontWeight.w600, color: FurPalsColors.textMid),
+                  style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: FurPalsColors.textMid),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
               Row(children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                      color: FurPalsColors.blush, borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(color: FurPalsColors.blush, borderRadius: BorderRadius.circular(20)),
                   child: Text(event.category,
-                      style: GoogleFonts.nunito(
-                          fontSize: 9, fontWeight: FontWeight.w800, color: FurPalsColors.pink)),
+                      style: GoogleFonts.nunito(fontSize: 9, fontWeight: FontWeight.w800, color: FurPalsColors.pink)),
                 ),
                 const Spacer(),
                 const Icon(Icons.people_rounded, size: 11, color: FurPalsColors.textMid),
                 const SizedBox(width: 3),
                 Text('${event.members.length}',
-                    style: GoogleFonts.nunito(
-                        fontSize: 10, fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
+                    style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: FurPalsColors.textMid)),
               ]),
             ]),
           ),
@@ -594,184 +597,338 @@ class _PetsScreenState extends State<PetsScreen> {
   }
 
   Widget _sectionLabel(String text) => Text(text,
-      style: GoogleFonts.baloo2(
-          fontSize: 20, fontWeight: FontWeight.w800, color: FurPalsColors.textDark));
+      style: GoogleFonts.baloo2(fontSize: 20, fontWeight: FontWeight.w800, color: FurPalsColors.textDark));
 }
 
-// ── Appointment Detail Sheet ──────────────────────────────────────────────────
-class _AppointmentDetailSheet extends StatelessWidget {
+// ── Appointment Detail Modal ──────────────────────────────────────────────────
+class _AppointmentDetailModal extends StatelessWidget {
   final Appointment appointment;
   final Pet pet;
-  const _AppointmentDetailSheet({required this.appointment, required this.pet});
+  final ValueChanged<Appointment>? onMarkDone;
+  final ValueChanged<Appointment>? onEdit;
+
+  const _AppointmentDetailModal({
+    required this.appointment,
+    required this.pet,
+    this.onMarkDone,
+    this.onEdit,
+  });
+
+  static const _modalBg  = Color(0xFFE8C9A0);
+  static const _btnClose = Color(0xFFCCE8F0);
+  static const _btnDone  = Color(0xFFC5EDD6);
+  static const _dark     = Color(0xFF111111);
 
   @override
   Widget build(BuildContext context) {
-    final Color badgeBg;
+    final screenH = MediaQuery.of(context).size.height;
+    final screenW = MediaQuery.of(context).size.width;
+    final bool isDone = appointment.status == 'done';
+
     final Color badgeFg;
     final String badgeLabel;
-    final Color headerGradStart;
-    final Color headerGradEnd;
+    final List<Color> heroColors;
 
     switch (appointment.status) {
       case 'today':
-        badgeBg = const Color(0xFFFFF0F3); badgeFg = FurPalsColors.pink; badgeLabel = 'Today';
-        headerGradStart = FurPalsColors.blush; headerGradEnd = FurPalsColors.peach; break;
+        badgeFg    = FurPalsColors.pink;
+        badgeLabel = 'Today';
+        heroColors = [FurPalsColors.blush, FurPalsColors.peach];
+        break;
       case 'done':
-        badgeBg = FurPalsColors.mint; badgeFg = FurPalsColors.green; badgeLabel = 'Done';
-        headerGradStart = FurPalsColors.mint; headerGradEnd = const Color(0xFFB8F0CC); break;
+        badgeFg    = FurPalsColors.green;
+        badgeLabel = 'Done';
+        heroColors = [FurPalsColors.mint, const Color(0xFFB8F0CC)];
+        break;
       default:
-        badgeBg = FurPalsColors.lavender; badgeFg = FurPalsColors.purple; badgeLabel = 'Upcoming';
-        headerGradStart = FurPalsColors.lavender; headerGradEnd = const Color(0xFFF0EBFF);
+        badgeFg    = FurPalsColors.purple;
+        badgeLabel = 'Upcoming';
+        heroColors = [FurPalsColors.lavender, const Color(0xFFF0EBFF)];
     }
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: FurPalsColors.warmWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-      ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const SizedBox(height: 12),
-        Center(child: Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: FurPalsColors.blush, borderRadius: BorderRadius.circular(2)))),
-        const SizedBox(height: 4),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(children: [
-            const Spacer(),
-            GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 32, height: 32,
-                  decoration: BoxDecoration(color: FurPalsColors.blush, borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.close_rounded, color: FurPalsColors.pink, size: 18)),
-            ),
-          ]),
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width:  screenW * 0.88,
+        height: screenH * 0.68,
+        decoration: BoxDecoration(
+          color: _modalBg,
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: Colors.black, width: 2.5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black, offset: Offset(5, 5), blurRadius: 0),
+          ],
         ),
-        Flexible(child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 36),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(
-              width: double.infinity, padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    colors: [headerGradStart, headerGradEnd]),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 12, offset: Offset(0, 4))],
+        child: Column(
+          children: [
+
+            // ── Title + Edit button ────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 20, 16, 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Appointment Detail',
+                        style: GoogleFonts.baloo2(
+                            fontSize: 18, fontWeight: FontWeight.w700, color: _dark)),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context, rootNavigator: true).pop();
+                      Future.delayed(const Duration(milliseconds: 150), () {
+                        onEdit?.call(appointment);
+                      });
+                    },
+                    child: Container(
+                      width: 38, height: 38,
+                      decoration: BoxDecoration(
+                        color: FurPalsColors.lavender,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.black, width: 1.5),
+                      ),
+                      child: const Icon(Icons.edit_rounded,
+                          color: FurPalsColors.purple, size: 18),
+                    ),
+                  ),
+                ],
               ),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Container(
-                  width: 64, height: 64,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.7),
-                    border: Border.all(color: Colors.white, width: 2.5),
-                    boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 8, offset: Offset(0, 3))],
-                  ),
-                  child: Center(child: Text(pet.emoji, style: const TextStyle(fontSize: 30))),
-                ),
-                const SizedBox(width: 14),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(20)),
-                    child: Text(badgeLabel, style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w800, color: badgeFg)),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(appointment.title, style: GoogleFonts.baloo2(fontSize: 20, fontWeight: FontWeight.w800, color: FurPalsColors.textDark, height: 1.1)),
-                  const SizedBox(height: 2),
-                  Text('${appointment.time}  ·  ${appointment.date}',
-                      style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: FurPalsColors.textMid)),
-                ])),
-              ]),
             ),
-            const SizedBox(height: 20),
-            _DetailRow(icon: Icons.pets_rounded,           iconColor: FurPalsColors.pink,          iconBg: FurPalsColors.blush,            label: 'Pet',          value: '${pet.name}  ·  ${pet.breed}'),
-            const SizedBox(height: 10),
-            _DetailRow(icon: Icons.local_hospital_rounded, iconColor: FurPalsColors.purple,        iconBg: FurPalsColors.lavender,         label: 'Vet / Clinic', value: appointment.vet),
-            const SizedBox(height: 10),
-            _DetailRow(icon: Icons.category_rounded,       iconColor: FurPalsColors.green,         iconBg: FurPalsColors.mint,             label: 'Type',         value: appointment.type),
-            const SizedBox(height: 10),
-            _DetailRow(icon: Icons.calendar_today_rounded, iconColor: const Color(0xFFE9963A),     iconBg: FurPalsColors.butter,           label: 'Date',         value: appointment.date),
-            const SizedBox(height: 10),
-            _DetailRow(icon: Icons.access_time_rounded,    iconColor: FurPalsColors.blue,          iconBg: const Color(0xFFE3EDFF),        label: 'Time',         value: appointment.time),
-            if (appointment.notes.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Text('NOTES', style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w800, color: FurPalsColors.textMid, letterSpacing: 0.4)),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity, padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: FurPalsColors.creamwhite, borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFF0E4DC), width: 1.5),
+
+            // ── White inner scrollable card ──────────────────────────────
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.black, width: 2),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Hero gradient card
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: heroColors),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 54, height: 54,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white.withOpacity(0.75),
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: Center(child: Text(pet.emoji, style: const TextStyle(fontSize: 26))),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.75),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(badgeLabel,
+                                            style: GoogleFonts.nunito(
+                                                fontSize: 10, fontWeight: FontWeight.w800, color: badgeFg)),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(appointment.title,
+                                          style: GoogleFonts.baloo2(
+                                              fontSize: 16, fontWeight: FontWeight.w800,
+                                              color: FurPalsColors.textDark, height: 1.15)),
+                                      Text('${appointment.time}  ·  ${appointment.date}',
+                                          style: GoogleFonts.nunito(
+                                              fontSize: 11, fontWeight: FontWeight.w600,
+                                              color: FurPalsColors.textMid)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          _ModalDetailRow(icon: Icons.pets_rounded,           iconColor: FurPalsColors.pink,      iconBg: FurPalsColors.blush,    label: 'Pet',          value: '${pet.name}  ·  ${pet.breed}'),
+                          const SizedBox(height: 8),
+                          _ModalDetailRow(icon: Icons.local_hospital_rounded, iconColor: FurPalsColors.purple,    iconBg: FurPalsColors.lavender, label: 'Vet / Clinic', value: appointment.vet),
+                          const SizedBox(height: 8),
+                          _ModalDetailRow(icon: Icons.category_rounded,       iconColor: FurPalsColors.green,     iconBg: FurPalsColors.mint,     label: 'Type',         value: appointment.type),
+                          const SizedBox(height: 8),
+                          _ModalDetailRow(icon: Icons.calendar_today_rounded, iconColor: const Color(0xFFE9963A), iconBg: FurPalsColors.butter,   label: 'Date',         value: appointment.date),
+                          const SizedBox(height: 8),
+                          _ModalDetailRow(icon: Icons.access_time_rounded,    iconColor: FurPalsColors.blue,      iconBg: const Color(0xFFE3EDFF),label: 'Time',         value: appointment.time),
+
+                          if (appointment.notes.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Text('NOTES',
+                                style: GoogleFonts.nunito(
+                                    fontSize: 11, fontWeight: FontWeight.w800,
+                                    color: FurPalsColors.textMid, letterSpacing: 0.4)),
+                            const SizedBox(height: 6),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: FurPalsColors.creamwhite,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFF0E4DC), width: 1.5),
+                              ),
+                              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                const Text('📝', style: TextStyle(fontSize: 14)),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(appointment.notes,
+                                    style: GoogleFonts.nunito(
+                                        fontSize: 12, fontWeight: FontWeight.w600,
+                                        color: FurPalsColors.textMid, height: 1.5))),
+                              ]),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('📝', style: TextStyle(fontSize: 16)),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(appointment.notes,
-                      style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: FurPalsColors.textMid, height: 1.5))),
-                ]),
               ),
-            ],
-            const SizedBox(height: 24),
-            const Divider(color: Color(0xFFF0E4DC), thickness: 1.5),
-            const SizedBox(height: 16),
-            Row(children: [
-              Expanded(child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  decoration: BoxDecoration(
-                    color: Colors.white, borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFF0E4DC), width: 1.5),
+            ),
+
+            // ── Bottom buttons ─────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+              child: Row(
+                children: [
+                  // CLOSE
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.of(context, rootNavigator: true).pop(),
+                      child: Container(
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: _btnClose,
+                          borderRadius: BorderRadius.circular(50),
+                          border: Border.all(color: _dark, width: 2.5),
+                          boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0)],
+                        ),
+                        child: Center(child: Text('CLOSE',
+                            style: GoogleFonts.baloo2(fontSize: 14, letterSpacing: 1.5, color: _dark))),
+                      ),
+                    ),
                   ),
-                  child: Center(child: Text('Close', style: GoogleFonts.baloo2(fontSize: 14, fontWeight: FontWeight.w700, color: FurPalsColors.textMid))),
-                ),
-              )),
-              const SizedBox(width: 12),
-              Expanded(flex: 2, child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    gradient: const LinearGradient(colors: [FurPalsColors.pink, FurPalsColors.pinkLight]),
-                    boxShadow: const [BoxShadow(color: Color(0x45F4738A), blurRadius: 12, offset: Offset(0, 5))],
+
+                  const SizedBox(width: 10),
+
+                  // DONE APPOINTMENT
+                  Expanded(
+                    flex: 2,
+                    child: GestureDetector(
+                      onTap: isDone
+                          ? null
+                          : () {
+                              final updated = Appointment(
+                                id:     appointment.id,
+                                petId:  appointment.petId,
+                                title:  appointment.title,
+                                vet:    appointment.vet,
+                                date:   appointment.date,
+                                time:   appointment.time,
+                                type:   appointment.type,
+                                notes:  appointment.notes,
+                                status: 'done',
+                              );
+                              onMarkDone?.call(updated);
+                              Navigator.of(context, rootNavigator: true).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('✅ Appointment marked as done!',
+                                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                                  backgroundColor: FurPalsColors.green,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14)),
+                                ),
+                              );
+                            },
+                      child: Container(
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: isDone ? _btnDone : const Color(0xFFF9C8D0),
+                          borderRadius: BorderRadius.circular(50),
+                          border: Border.all(color: _dark, width: 2.5),
+                          boxShadow: const [BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0)],
+                        ),
+                        child: Center(
+                          child: Text(
+                            isDone ? '✅ ALREADY DONE' : 'DONE APPOINTMENT 🐾',
+                            style: GoogleFonts.baloo2(fontSize: 13, letterSpacing: 0.8, color: _dark),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: Center(child: Text('Got it! 🐾', style: GoogleFonts.baloo2(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white))),
-                ),
-              )),
-            ]),
-          ]),
-        )),
-      ]),
+                ],
+              ),
+            ),
+
+          ],
+        ),
+      ),
     );
   }
 }
 
-class _DetailRow extends StatelessWidget {
+// ── Modal Detail Row ──────────────────────────────────────────────────────────
+class _ModalDetailRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor, iconBg;
   final String label, value;
-  const _DetailRow({required this.icon, required this.iconColor, required this.iconBg, required this.label, required this.value});
+
+  const _ModalDetailRow({
+    required this.icon, required this.iconColor, required this.iconBg,
+    required this.label, required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(14),
-        boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 4, offset: Offset(0, 2))],
-      ),
-      child: Row(children: [
-        Container(width: 38, height: 38,
-            decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(10)),
-            child: Center(child: Icon(icon, size: 18, color: iconColor))),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: FurPalsColors.textSoft, letterSpacing: 0.3)),
-          const SizedBox(height: 1),
-          Text(value, style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w700, color: FurPalsColors.textDark)),
-        ])),
-      ]),
+    return Row(
+      children: [
+        Container(
+          width: 34, height: 34,
+          decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(10)),
+          child: Center(child: Icon(icon, size: 16, color: iconColor)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: GoogleFonts.nunito(
+                fontSize: 10, fontWeight: FontWeight.w700,
+                color: FurPalsColors.textMid, letterSpacing: 0.3)),
+            Text(value, style: GoogleFonts.nunito(
+                fontSize: 13, fontWeight: FontWeight.w700, color: FurPalsColors.textDark),
+                overflow: TextOverflow.ellipsis),
+          ]),
+        ),
+      ],
     );
   }
 }
@@ -814,14 +971,19 @@ class _AppointmentCard extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(appointment.title, style: GoogleFonts.baloo2(fontSize: 15, fontWeight: FontWeight.w800, color: FurPalsColors.textDark, height: 1.15)),
+              Text(appointment.title,
+                  style: GoogleFonts.baloo2(fontSize: 15, fontWeight: FontWeight.w800,
+                      color: FurPalsColors.textDark, height: 1.15)),
               const SizedBox(height: 2),
-              Text('${pet.name} · ${appointment.type}', style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: FurPalsColors.textMid)),
+              Text('${pet.name} · ${appointment.type}',
+                  style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600,
+                      color: FurPalsColors.textMid)),
             ])),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(color: badgeBg, borderRadius: BorderRadius.circular(20)),
-              child: Text(badgeLabel, style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w800, color: badgeFg)),
+              child: Text(badgeLabel,
+                  style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w800, color: badgeFg)),
             ),
           ]),
         ),
