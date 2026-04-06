@@ -13,6 +13,7 @@ import 'package:furpals/NotificationScreen.dart';
 import 'package:furpals/petmanagement.dart';
 import 'package:furpals/newappointment.dart';
 import 'package:furpals/addevent.dart';
+import 'package:furpals/profilescreen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -80,6 +81,7 @@ class MyApp extends StatelessWidget {
     
   },
 ),  
+    '/profilescreen': (context) => const ProfileScreen(),
       },
 );
   }
