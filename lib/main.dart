@@ -69,10 +69,10 @@ class MyApp extends StatelessWidget {
       '/petmanagement': (context) => const PetsScreen(),
     '/newappointment': (context) => const CalendarScreen(
   pets: [],
-  existingAppointmentCount: 0,
+
 ),
     '/addevent': (context) => AddEventScreen(
-  existingEventCount: 0,
+
   onAdd: (newEvent) {
     
   },

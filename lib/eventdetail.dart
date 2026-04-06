@@ -218,7 +218,24 @@ class _EventDetailScreenState extends State<EventDetailScreen>
       pinned: false,
       flexibleSpace: FlexibleSpaceBar(
         background: Stack(fit: StackFit.expand, children: [
-          if (widget.event.photoPath != null && widget.event.photoPath!.isNotEmpty)
+          if (widget.event.photoUrl != null && widget.event.photoUrl!.isNotEmpty)
+            Image.network(
+              widget.event.photoUrl!,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const Center(child: CircularProgressIndicator());
+              },
+              errorBuilder: (_, __, ___) => Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
+                    colors: [widget.event.color1, widget.event.color2],
+                  ),
+                ),
+                child: Center(child: Text(widget.event.emoji, style: const TextStyle(fontSize: 90))),
+              ),
+            ) else if (widget.event.photoPath != null && widget.event.photoPath!.isNotEmpty)
             Image.file(File(widget.event.photoPath!), fit: BoxFit.cover)
           else
             Container(

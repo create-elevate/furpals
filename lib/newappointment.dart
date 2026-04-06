@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:furpals/models.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class CalendarScreen extends StatefulWidget {
   final List<Pet> pets;
-  final int existingAppointmentCount;
-  final Appointment? appointmentToEdit; // ← NEW: pass existing appt to edit
+  final Appointment? appointmentToEdit; // ← optional
 
   const CalendarScreen({
     super.key,
     required this.pets,
-    required this.existingAppointmentCount,
-    this.appointmentToEdit, // ← optional
+    this.appointmentToEdit,
   });
 
   @override
@@ -178,8 +177,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                        _selectedDate.day   == today.day;
 
     final appt = Appointment(
-      // Keep the original id when editing, use new count when creating
-      id:     _isEditing ? widget.appointmentToEdit!.id : widget.existingAppointmentCount,
+      id:     _isEditing ? widget.appointmentToEdit!.id : '',
       petId:  _selectedPetId,
       title:  _titleController.text.trim(),
       vet:    _vetController.text.isEmpty ? 'TBD' : _vetController.text,
@@ -191,6 +189,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       status: (_isEditing && widget.appointmentToEdit!.status == 'done')
           ? 'done'
           : isToday ? 'today' : 'upcoming',
+      ownerId: _isEditing ? widget.appointmentToEdit!.ownerId : FirebaseAuth.instance.currentUser?.uid ?? '',
     );
 
     Navigator.pop(context, appt);

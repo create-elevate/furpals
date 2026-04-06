@@ -9,6 +9,7 @@ import 'package:furpals/NotificationScreen.dart';
 import 'package:furpals/models.dart' as models;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class FurPalsColors {
   static const blush       = Color(0xFFF9C8D0);
@@ -68,21 +69,6 @@ final List<Pet> samplePets = [
       ]),
 ];
 
-final List<Appointment> sampleAppointments = [
-  Appointment(id: 0, petId: 0, title: 'Annual Check-up',
-      vet: 'Dr. Santos Pet Clinic',    date: 'Apr 5, 2026',  time: '10:00 AM', type: '🏥 Vet Visit',
-      notes: 'Bring vaccination record. Fasting 6hrs prior.', status: 'upcoming'),
-  Appointment(id: 1, petId: 1, title: 'Full Grooming Session',
-      vet: 'Fluffy Paws Grooming',     date: 'Mar 28, 2026', time: '2:30 PM',  type: '✂️ Grooming',
-      notes: 'Bath, trim, blow dry.',                         status: 'today'),
-  Appointment(id: 2, petId: 2, title: 'RHD Vaccination',
-      vet: 'Dr. Cruz Animal Hospital', date: 'Mar 15, 2026', time: '9:00 AM',  type: '💉 Vaccination',
-      notes: 'Second dose.',                                  status: 'done'),
-  Appointment(id: 3, petId: 3, title: 'Dental Cleaning',
-      vet: 'PetDent Clinic',           date: 'Apr 18, 2026', time: '11:00 AM', type: '🦷 Dental',
-      notes: 'Scaling and polishing.',                        status: 'upcoming'),
-];
-
 // ── Main Screen ───────────────────────────────────────────────────────────────
 class PetsScreen extends StatefulWidget {
   const PetsScreen({super.key});
@@ -92,49 +78,17 @@ class PetsScreen extends StatefulWidget {
 
 class _PetsScreenState extends State<PetsScreen> {
   List<Pet> _pets = List.from(samplePets);
-  List<Appointment> _appointments = List.from(sampleAppointments);
+  List<Appointment> _appointments = [];
   String _searchQuery = '';
 
-  List<PetEvent> _events = [
-    PetEvent(
-      id: 0, emoji: '🐕',
-      title: 'Dog Fair 2026', location: 'SM MOA',
-      date: 'Apr 12', time: '10:00 AM', category: 'Pet Fair',
-      description: 'The biggest dog fair of the year! Bring your furry friends.',
-      color1: FurPalsColors.mint, color2: FurPalsColors.lavender,
-      isOwner: false, ownerName: 'FurPals Team', ownerEmoji: '🐾',
-      members: [
-        EventMember(id: 'm1', name: 'Maria Santos',   emoji: '🐱', joinedDate: 'Mar 1'),
-        EventMember(id: 'm2', name: 'Juan Dela Cruz', emoji: '🐶', joinedDate: 'Mar 3'),
-      ],
-    ),
-    PetEvent(
-      id: 1, emoji: '🐾',
-      title: 'Adopt a Paw Day', location: 'Quezon City',
-      date: 'Apr 20', time: '9:00 AM', category: 'Adoption',
-      description: 'Give a pet a forever home. Adoption fees waived for the day!',
-      color1: FurPalsColors.peach, color2: FurPalsColors.butter,
-      isOwner: false, ownerName: 'PAWS PH', ownerEmoji: '🐾',
-      members: [],
-    ),
-    PetEvent(
-      id: 2, emoji: '🏆',
-      title: 'Pet Show', location: 'BGC',
-      date: 'May 3', time: '2:00 PM', category: 'Contest',
-      description: "Show off your pet's best tricks and looks!",
-      color1: FurPalsColors.blush, color2: FurPalsColors.peach,
-      isOwner: true, ownerName: 'You', ownerEmoji: '🐾',
-      members: [
-        EventMember(id: 'm3', name: 'Anna Reyes', emoji: '🐰', joinedDate: 'Mar 10'),
-        EventMember(id: 'm4', name: 'Carlo Cruz', emoji: '🐹', joinedDate: 'Mar 12'),
-      ],
-    ),
-  ];
+  List<PetEvent> _events = [];
 
   List<Appointment> get _filteredAppts {
-    if (_searchQuery.isEmpty) return _appointments;
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final ownerAppointments = _appointments.where((a) => a.ownerId == currentUid);
+    if (_searchQuery.isEmpty) return ownerAppointments.toList();
     final q = _searchQuery.toLowerCase();
-    return _appointments.where((a) {
+    return ownerAppointments.where((a) {
       final pet = _pets.firstWhere((p) => p.id == a.petId, orElse: () => _pets[0]);
       return a.title.toLowerCase().contains(q) ||
              pet.name.toLowerCase().contains(q) ||
@@ -142,38 +96,318 @@ class _PetsScreenState extends State<PetsScreen> {
     }).toList();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      });
+      return;
+    }
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await _loadEvents();
+    await _loadAppointments();
+  }
+
+  Future<void> _loadEvents() async {
+    final snapshot = await FirebaseFirestore.instance.collection('events').orderBy('createdAt', descending: true).get();
+    final events = snapshot.docs.map((doc) {
+      final data = doc.data();
+      final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      return PetEvent(
+        id: doc.id,
+        emoji: data['emoji'] ?? '🐾',
+        title: data['title'] ?? '',
+        location: data['location'] ?? '',
+        date: data['date'] ?? '',
+        time: data['time'] ?? '',
+        category: data['category'] ?? '',
+        description: data['description'] ?? '',
+        color1: Color(data['color1'] ?? FurPalsColors.mint.value),
+        color2: Color(data['color2'] ?? FurPalsColors.lavender.value),
+        photoPath: data['photoPath'],
+        photoUrl: data['photoUrl'],
+        isOwner: data['ownerId'] == currentUid,
+        ownerName: data['ownerName'] ?? '',
+        ownerEmoji: data['ownerEmoji'] ?? '🐾',
+        ownerId: data['ownerId'] ?? '',
+        members: [],
+      );
+    }).toList();
+    setState(() => _events = events);
+  }
+
+  Future<String?> _uploadEventPhoto(String localPath, String currentUid, String docId) async {
+    try {
+      final file = File(localPath);
+      if (!file.existsSync()) return null;
+      final extension = localPath.split('.').lastWhere((part) => part.isNotEmpty, orElse: () => 'jpg');
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('event_photos/$currentUid/$docId.$extension');
+      final snapshot = await storageRef.putFile(file);
+      return await snapshot.ref.getDownloadURL();
+    } catch (e) {
+      debugPrint('Event photo upload failed: $e');
+      return null;
+    }
+  }
+
+  Future<void> _loadAppointments() async {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    debugPrint('Loading appointments for uid: $currentUid');
+    if (currentUid.isEmpty) {
+      debugPrint('No user logged in, skipping appointment load');
+      return;
+    }
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('appointments').where('ownerId', isEqualTo: currentUid).get();
+      debugPrint('Found ${snapshot.docs.length} appointments');
+      final appointments = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return Appointment(
+          id: doc.id,
+          petId: data['petId'] ?? 0,
+          title: data['title'] ?? '',
+          vet: data['vet'] ?? '',
+          date: data['date'] ?? '',
+          time: data['time'] ?? '',
+          type: data['type'] ?? '',
+          notes: data['notes'] ?? '',
+          status: data['status'] ?? 'upcoming',
+          ownerId: data['ownerId'] ?? '',
+        );
+      }).toList();
+      // Sort by date descending (assuming date format allows comparison)
+      appointments.sort((a, b) => b.date.compareTo(a.date));
+      setState(() => _appointments = appointments);
+      debugPrint('Loaded ${appointments.length} appointments');
+    } catch (error) {
+      debugPrint('Failed to load appointments: $error');
+    }
+  }
+
   void _addPet(Pet p)    => setState(() => _pets.add(p));
   void _updatePet(Pet p) => setState(() {
     final idx = _pets.indexWhere((x) => x.id == p.id);
     if (idx != -1) _pets[idx] = p;
   });
-  void _addAppointment(Appointment a) => setState(() => _appointments.insert(0, a));
-  void _updateAppointment(Appointment a) => setState(() {
-    final idx = _appointments.indexWhere((x) => x.id == a.id);
-    if (idx != -1) _appointments[idx] = a;
-  });
-
-  void _addEvent(PetEvent newEvent) {
-    setState(() {
-      _events.insert(0, PetEvent(
-        id: _events.length, emoji: newEvent.emoji, title: newEvent.title,
-        location: newEvent.location, date: newEvent.date, time: newEvent.time,
-        category: newEvent.category, description: newEvent.description,
-        color1: newEvent.color1, color2: newEvent.color2,
-        photoPath: newEvent.photoPath,
-        isOwner: true, ownerName: 'You', ownerEmoji: '🐾', members: [],
+  void _addAppointment(Appointment a) async {
+    final messenger = ScaffoldMessenger.of(context);
+    debugPrint('Adding appointment with ownerId: ${a.ownerId}');
+    if (a.ownerId.isEmpty) {
+      debugPrint('ownerId is empty, cannot save');
+      messenger.showSnackBar(SnackBar(
+        content: Text('Unable to save appointment: not logged in.',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+        backgroundColor: FurPalsColors.heartRed,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ));
-    });
+      return;
+    }
+    try {
+      final docRef = await FirebaseFirestore.instance.collection('appointments').add({
+        'petId': a.petId,
+        'title': a.title,
+        'vet': a.vet,
+        'date': a.date,
+        'time': a.time,
+        'type': a.type,
+        'notes': a.notes,
+        'status': a.status,
+        'ownerId': a.ownerId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint('Appointment saved with ID: ${docRef.id}');
+      final apptWithId = Appointment(
+        id: docRef.id,
+        petId: a.petId,
+        title: a.title,
+        vet: a.vet,
+        date: a.date,
+        time: a.time,
+        type: a.type,
+        notes: a.notes,
+        status: a.status,
+        ownerId: a.ownerId,
+      );
+      setState(() => _appointments.insert(0, apptWithId));
+    } catch (error) {
+      debugPrint('Appointment add failed: $error');
+      messenger.showSnackBar(SnackBar(
+        content: Text('Could not save appointment. Please check your connection and try again.',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+        backgroundColor: FurPalsColors.heartRed,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ));
+    }
+  }
+  void _updateAppointment(Appointment a) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (a.id.isEmpty) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Unable to save appointment: missing appointment ID.',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+        backgroundColor: FurPalsColors.heartRed,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ));
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection('appointments').doc(a.id).update({
+        'petId': a.petId,
+        'title': a.title,
+        'vet': a.vet,
+        'date': a.date,
+        'time': a.time,
+        'type': a.type,
+        'notes': a.notes,
+        'status': a.status,
+      });
+      setState(() {
+        final idx = _appointments.indexWhere((x) => x.id == a.id);
+        if (idx != -1) _appointments[idx] = a;
+      });
+    } catch (error) {
+      debugPrint('Appointment update failed: $error');
+      messenger.showSnackBar(SnackBar(
+        content: Text('Could not save appointment. Please try again.',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+        backgroundColor: FurPalsColors.heartRed,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ));
+    }
   }
 
-  void _updateEvent(PetEvent updated) {
+  void _deleteAppointment(String id) async {
+    if (id.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await FirebaseFirestore.instance.collection('appointments').doc(id).delete();
+      setState(() => _appointments.removeWhere((x) => x.id == id));
+    } catch (error) {
+      debugPrint('Appointment delete failed: $error');
+      messenger.showSnackBar(SnackBar(
+        content: Text('Could not delete appointment. Please try again.',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+        backgroundColor: FurPalsColors.heartRed,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ));
+    }
+  }
+
+  void _addEvent(PetEvent newEvent) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+    final docRef = await FirebaseFirestore.instance.collection('events').add({
+      'emoji': newEvent.emoji,
+      'title': newEvent.title,
+      'location': newEvent.location,
+      'date': newEvent.date,
+      'time': newEvent.time,
+      'category': newEvent.category,
+      'description': newEvent.description,
+      'color1': newEvent.color1.value,
+      'color2': newEvent.color2.value,
+      'photoPath': newEvent.photoPath,
+      'photoUrl': null,
+      'ownerId': currentUser.uid,
+      'ownerName': 'You',
+      'ownerEmoji': '🐾',
+      'members': [],
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    String? uploadedUrl;
+    if (newEvent.photoPath != null && newEvent.photoPath!.isNotEmpty) {
+      uploadedUrl = await _uploadEventPhoto(newEvent.photoPath!, currentUser.uid, docRef.id);
+      if (uploadedUrl != null) {
+        await docRef.update({'photoUrl': uploadedUrl});
+      }
+    }
+
+    final eventWithId = PetEvent(
+      id: docRef.id,
+      emoji: newEvent.emoji,
+      title: newEvent.title,
+      location: newEvent.location,
+      date: newEvent.date,
+      time: newEvent.time,
+      category: newEvent.category,
+      description: newEvent.description,
+      color1: newEvent.color1,
+      color2: newEvent.color2,
+      photoPath: newEvent.photoPath,
+      photoUrl: uploadedUrl,
+      isOwner: true,
+      ownerName: 'You',
+      ownerEmoji: '🐾',
+      ownerId: currentUser.uid,
+      members: [],
+    );
+    setState(() => _events.insert(0, eventWithId));
+  }
+
+  void _updateEvent(PetEvent updated) async {
+    String? photoUrl = updated.photoUrl;
+    if (updated.photoPath != null && updated.photoPath!.isNotEmpty && !updated.photoPath!.startsWith('http')) {
+      photoUrl = await _uploadEventPhoto(updated.photoPath!, updated.ownerId, updated.id);
+    }
+
+    await FirebaseFirestore.instance.collection('events').doc(updated.id).update({
+      'emoji': updated.emoji,
+      'title': updated.title,
+      'location': updated.location,
+      'date': updated.date,
+      'time': updated.time,
+      'category': updated.category,
+      'description': updated.description,
+      'color1': updated.color1.value,
+      'color2': updated.color2.value,
+      'photoPath': updated.photoPath,
+      'photoUrl': photoUrl,
+    });
     setState(() {
       final idx = _events.indexWhere((e) => e.id == updated.id);
-      if (idx != -1) _events[idx] = updated;
+      if (idx != -1) {
+        _events[idx] = PetEvent(
+        id: updated.id,
+        emoji: updated.emoji,
+        title: updated.title,
+        location: updated.location,
+        date: updated.date,
+        time: updated.time,
+        category: updated.category,
+        description: updated.description,
+        color1: updated.color1,
+        color2: updated.color2,
+        photoPath: updated.photoPath,
+        photoUrl: photoUrl,
+        isOwner: updated.isOwner,
+        ownerName: updated.ownerName,
+        ownerEmoji: updated.ownerEmoji,
+        ownerId: updated.ownerId,
+        members: updated.members,
+      );
+      }
     });
   }
 
-  void _deleteEvent(int id) => setState(() => _events.removeWhere((e) => e.id == id));
+  void _deleteEvent(String id) async {
+    await FirebaseFirestore.instance.collection('events').doc(id).delete();
+    setState(() => _events.removeWhere((e) => e.id == id));
+  }
 
   void _openEventDetail(PetEvent event) {
     Navigator.push(context, MaterialPageRoute(
@@ -184,7 +418,6 @@ class _PetsScreenState extends State<PetsScreen> {
           Navigator.pop(context);
           Navigator.push(context, MaterialPageRoute(
             builder: (_) => AddEventScreen(
-              existingEventCount: _events.length,
               onAdd: _addEvent, onUpdate: _updateEvent,
               eventToEdit: eventToEdit,
             ),
@@ -230,8 +463,10 @@ class _PetsScreenState extends State<PetsScreen> {
             pet: pet,
             onMarkDone: _updateAppointment,
             onEdit: (appt) {
-              // 1. close the detail modal
-              Navigator.of(context, rootNavigator: true).pop();
+              // 1. close the detail modal if it is still open
+              if (Navigator.of(context, rootNavigator: true).canPop()) {
+                Navigator.of(context, rootNavigator: true).pop();
+              }
               // 2. open CalendarScreen with existing data pre-filled
               Future.delayed(const Duration(milliseconds: 150), () async {
                 final result = await Navigator.push<Appointment>(
@@ -239,7 +474,6 @@ class _PetsScreenState extends State<PetsScreen> {
                   MaterialPageRoute(
                     builder: (_) => CalendarScreen(
                       pets: _pets,
-                      existingAppointmentCount: _appointments.length,
                       appointmentToEdit: appt, // ← pre-fills all fields
                     ),
                   ),
@@ -247,6 +481,18 @@ class _PetsScreenState extends State<PetsScreen> {
                 // 3. if user saved, update the list
                 if (result != null) _updateAppointment(result);
               });
+            },
+            onDelete: () {
+              if (Navigator.of(context, rootNavigator: true).canPop()) {
+                Navigator.of(context, rootNavigator: true).pop();
+              }
+              _deleteAppointment(appointment.id);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('🗑️ Appointment deleted.', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                backgroundColor: FurPalsColors.heartRed,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ));
             },
           ),
         ),
@@ -258,8 +504,7 @@ class _PetsScreenState extends State<PetsScreen> {
     final result = await Navigator.push<Appointment>(
       context,
       MaterialPageRoute(
-        builder: (_) => CalendarScreen(
-            pets: _pets, existingAppointmentCount: _appointments.length),
+        builder: (_) => CalendarScreen(pets: _pets),
       ),
     );
     if (result != null) _addAppointment(result);
@@ -456,7 +701,6 @@ class _PetsScreenState extends State<PetsScreen> {
               GestureDetector(
                 onTap: () => Navigator.push(context, MaterialPageRoute(
                   builder: (_) => AddEventScreen(
-                    existingEventCount: _events.length,
                     onAdd: _addEvent, onUpdate: _updateEvent,
                   ),
                 )),
@@ -501,7 +745,18 @@ class _PetsScreenState extends State<PetsScreen> {
       ),
       clipBehavior: Clip.hardEdge,
       child: Stack(children: [
-        if (event.photoPath != null && event.photoPath!.isNotEmpty)
+        if (event.photoUrl != null && event.photoUrl!.isNotEmpty)
+          Positioned.fill(
+            child: Image.network(
+              event.photoUrl!,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const Center(child: CircularProgressIndicator());
+              },
+              errorBuilder: (_, __, ___) => Center(child: Text(event.emoji, style: const TextStyle(fontSize: 60))),
+            ),
+          ) else if (event.photoPath != null && event.photoPath!.isNotEmpty)
           Positioned.fill(child: Image.file(File(event.photoPath!), fit: BoxFit.cover))
         else
           Center(child: Text(event.emoji, style: const TextStyle(fontSize: 60))),
@@ -606,12 +861,14 @@ class _AppointmentDetailModal extends StatelessWidget {
   final Pet pet;
   final ValueChanged<Appointment>? onMarkDone;
   final ValueChanged<Appointment>? onEdit;
+  final VoidCallback? onDelete;
 
   const _AppointmentDetailModal({
     required this.appointment,
     required this.pet,
     this.onMarkDone,
     this.onEdit,
+    this.onDelete,
   });
 
   static const _modalBg  = Color(0xFFE8C9A0);
@@ -688,6 +945,53 @@ class _AppointmentDetailModal extends StatelessWidget {
                       ),
                       child: const Icon(Icons.edit_rounded,
                           color: FurPalsColors.purple, size: 18),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          backgroundColor: FurPalsColors.warmWhite,
+                          title: Text('Delete Appointment',
+                              style: GoogleFonts.baloo2(fontWeight: FontWeight.w800, color: FurPalsColors.textDark, fontSize: 18)),
+                          content: Text(
+                            'Delete "${appointment.title}"? This cannot be undone.',
+                            style: GoogleFonts.nunito(fontSize: 13, color: FurPalsColors.textMid, fontWeight: FontWeight.w600),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: Text('Cancel', style: GoogleFonts.nunito(color: FurPalsColors.textMid, fontWeight: FontWeight.w700)),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: FurPalsColors.heartRed,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 0,
+                              ),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                onDelete?.call();
+                              },
+                              child: Text('Delete', style: GoogleFonts.nunito(fontWeight: FontWeight.w800)),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: 38, height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFE2E2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.black, width: 1.5),
+                      ),
+                      child: const Icon(Icons.delete_rounded,
+                          color: FurPalsColors.heartRed, size: 18),
                     ),
                   ),
                 ],
@@ -846,15 +1150,16 @@ class _AppointmentDetailModal extends StatelessWidget {
                           ? null
                           : () {
                               final updated = Appointment(
-                                id:     appointment.id,
-                                petId:  appointment.petId,
-                                title:  appointment.title,
-                                vet:    appointment.vet,
-                                date:   appointment.date,
-                                time:   appointment.time,
-                                type:   appointment.type,
-                                notes:  appointment.notes,
-                                status: 'done',
+                                id:      appointment.id,
+                                petId:   appointment.petId,
+                                title:   appointment.title,
+                                vet:     appointment.vet,
+                                date:    appointment.date,
+                                time:    appointment.time,
+                                type:    appointment.type,
+                                notes:   appointment.notes,
+                                status:  'done',
+                                ownerId: appointment.ownerId,
                               );
                               onMarkDone?.call(updated);
                               Navigator.of(context, rootNavigator: true).pop();
