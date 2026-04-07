@@ -2,17 +2,22 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:furpals/models.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:furpals/notification_service.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final PetEvent event;
   final VoidCallback? onDelete;
   final Function(PetEvent)? onEdit;
+  final Function(List<EventMember>)? onMembersUpdated;
 
   const EventDetailScreen({
     super.key,
     required this.event,
     this.onDelete,
     this.onEdit,
+    this.onMembersUpdated,
   });
 
   @override
@@ -23,6 +28,8 @@ class _EventDetailScreenState extends State<EventDetailScreen>
     with TickerProviderStateMixin {
   bool _isAttending = false;
   bool _isNotified  = false;
+  String _displayOwnerName = '';
+  String _ownerPhotoURL = '';
   late List<EventMember> _members;
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
@@ -33,6 +40,15 @@ class _EventDetailScreenState extends State<EventDetailScreen>
   void initState() {
     super.initState();
     _members = List.from(widget.event.members);
+    _isAttending = _members.any((member) => member.id == _currentUid);
+    _displayOwnerName = widget.event.ownerName;
+    
+    if (widget.event.ownerId == _currentUid) {
+      // If current user is the owner, use their own profile data
+      _loadCurrentUserProfile();
+    } else if (widget.event.ownerId.isNotEmpty && (_displayOwnerName.isEmpty || _displayOwnerName == 'You')) {
+      _fetchOwnerName();
+    }
 
     _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
@@ -49,14 +65,123 @@ class _EventDetailScreenState extends State<EventDetailScreen>
     super.dispose();
   }
 
-  void _toggleAttend() {
-    setState(() => _isAttending = !_isAttending);
-    if (_isAttending) {
+  String get _currentUid => FirebaseAuth.instance.currentUser?.uid ?? '';
+
+  Future<String> _currentUserName() async {
+    final authUser = FirebaseAuth.instance.currentUser;
+    if (authUser?.displayName?.trim().isNotEmpty ?? false) {
+      return authUser!.displayName!;
+    }
+    if (_currentUid.isEmpty) return 'Friend';
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUid).get();
+    final data = userDoc.data();
+    return data?['fullName'] ?? data?['username'] ?? 'Friend';
+  }
+
+  Future<EventMember> _buildMemberData() async {
+    final name = await _currentUserName();
+    String emoji = '🐾';
+    if (_currentUid.isNotEmpty) {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUid).get();
+      final data = userDoc.data();
+      if (data != null) {
+        emoji = data['emoji'] ?? emoji;
+      }
+    }
+    return EventMember(
+      id: _currentUid,
+      name: name,
+      emoji: emoji,
+      joinedDate: DateTime.now().toLocal().toString().split(' ').first,
+    );
+  }
+
+  Future<void> _fetchOwnerName() async {
+    if (widget.event.ownerId.isEmpty || widget.event.ownerId == _currentUid) return;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(widget.event.ownerId).get();
+      final data = doc.data();
+      if (data != null) {
+        final name = data['fullName'] ?? data['username'] ?? '';
+        final photoURL = data['photoURL'] ?? '';
+        if (name.isNotEmpty) {
+          setState(() {
+            _displayOwnerName = name;
+            _ownerPhotoURL = photoURL;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadCurrentUserProfile() async {
+    if (_currentUid.isEmpty) return;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(_currentUid).get();
+      final data = doc.data();
+      if (data != null) {
+        final photoURL = data['photoURL'] ?? '';
+        setState(() {
+          _ownerPhotoURL = photoURL;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleAttend() async {
+    if (_currentUid.isEmpty) return;
+    final joining = !_isAttending;
+    setState(() => _isAttending = joining);
+
+    if (joining) {
       _attendCtrl.forward(from: 0);
+    }
+
+    final previousMembers = List<EventMember>.from(_members);
+    if (joining) {
+      final member = await _buildMemberData();
+      _members.add(member);
+    } else {
+      _members.removeWhere((member) => member.id == _currentUid);
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection('events').doc(widget.event.id).update({
+        'members': _members.map((member) => member.toMap()).toList(),
+      });
+
+      if (joining && widget.event.ownerId.isNotEmpty && widget.event.ownerId != _currentUid) {
+        final username = await _currentUserName();
+        await NotificationService.sendAttendanceNotification(
+          toUserId: widget.event.ownerId,
+          fromUserId: _currentUid,
+          fromUsername: username,
+          eventId: widget.event.id,
+          eventTitle: widget.event.title,
+        );
+      }
+
+      widget.onMembersUpdated?.call(List<EventMember>.from(_members));
+
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text("🎉 You're attending ${widget.event.title}!",
+        content: Text(
+          joining ? "🎉 You're attending ${widget.event.title}!" : 'You are no longer attending this event.',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+        ),
+        backgroundColor: joining ? FurPalsColors.green : FurPalsColors.textMid,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ));
+    } catch (error) {
+      debugPrint('Event attendance update failed: $error');
+      setState(() {
+        _members = previousMembers;
+        _isAttending = !joining;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not save event attendance. Please try again.',
             style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-        backgroundColor: FurPalsColors.green,
+        backgroundColor: FurPalsColors.heartRed,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ));
@@ -106,8 +231,16 @@ class _EventDetailScreenState extends State<EventDetailScreen>
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 0,
             ),
-            onPressed: () {
+            onPressed: () async {
               setState(() => _members.removeWhere((m) => m.id == member.id));
+              try {
+                await FirebaseFirestore.instance.collection('events').doc(widget.event.id).update({
+                  'members': _members.map((member) => member.toMap()).toList(),
+                });
+                widget.onMembersUpdated?.call(List<EventMember>.from(_members));
+              } catch (_) {
+                setState(() => _members.add(member));
+              }
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                 content: Text('${member.name} removed from event.',
@@ -235,7 +368,7 @@ class _EventDetailScreenState extends State<EventDetailScreen>
                 ),
                 child: Center(child: Text(widget.event.emoji, style: const TextStyle(fontSize: 90))),
               ),
-            ) else if (widget.event.photoPath != null && widget.event.photoPath!.isNotEmpty)
+            ) else if (widget.event.photoPath != null && widget.event.photoPath!.isNotEmpty && File(widget.event.photoPath!).existsSync())
             Image.file(File(widget.event.photoPath!), fit: BoxFit.cover)
           else
             Container(
@@ -295,19 +428,68 @@ class _EventDetailScreenState extends State<EventDetailScreen>
             border: Border.all(color: FurPalsColors.blush, width: 1.5),
           ),
           child: Row(children: [
-            Container(
-              width: 36, height: 36,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(colors: [FurPalsColors.pink, FurPalsColors.pinkLight]),
+            GestureDetector(
+              onTap: () {
+                // TODO: Navigate to owner's profile when ProfileScreen supports userId parameter
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Profile view coming soon! 👤',
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+                    backgroundColor: FurPalsColors.pink,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              child: Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: FurPalsColors.pink.withOpacity(0.3), width: 2),
+                ),
+                child: ClipOval(
+                  child: _ownerPhotoURL.isNotEmpty
+                      ? Image.network(
+                          _ownerPhotoURL,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: FurPalsColors.cream,
+                            child: Center(child: Text(widget.event.ownerEmoji, style: const TextStyle(fontSize: 18))),
+                          ),
+                        )
+                      : Container(
+                          color: FurPalsColors.cream,
+                          child: Center(child: Text(widget.event.ownerEmoji, style: const TextStyle(fontSize: 18))),
+                        ),
+                ),
               ),
-              child: Center(child: Text(widget.event.ownerEmoji, style: const TextStyle(fontSize: 18))),
             ),
             const SizedBox(width: 10),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Created by', style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w600, color: FurPalsColors.textMid)),
-              Text(widget.event.ownerName,
-                  style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
+              GestureDetector(
+                onTap: () {
+                  // TODO: Navigate to owner's profile when ProfileScreen supports userId parameter
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Profile view coming soon! 👤',
+                          style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+                      backgroundColor: FurPalsColors.pink,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+                child: Text(
+                  widget.event.ownerId == FirebaseAuth.instance.currentUser?.uid
+                      ? 'You'
+                      : (_displayOwnerName.isNotEmpty ? _displayOwnerName : 'Friend'),
+                  style: GoogleFonts.nunito(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: FurPalsColors.pink,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
             ]),
             const Spacer(),
             if (widget.event.isOwner)

@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:furpals/notification_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -52,6 +54,12 @@ class _LoginScreenState extends State<LoginScreen> {
             .collection('users')
             .doc(uid)
             .update({'isOnline': true});
+
+        // Save FCM token
+        final token = await FirebaseMessaging.instance.getToken();
+        if (token != null) {
+          await NotificationService.saveTokenForUser(uid, token);
+        }
       }
 
       if (_rememberMe) {

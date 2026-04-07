@@ -13,6 +13,7 @@ class FurPalsColors {
   static const textSoft   = Color(0x66000000);
   static const pink       = Color(0xFFF4738A);
   static const blue       = Color(0xFF448AFF);
+  static const green      = Color(0xFF5DB87A);
   static const heartRed   = Color(0xFFE53935);
 }
 
@@ -303,6 +304,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
       action = 'started following you!';
       icon = Icons.person_add_rounded;
       iconBg = FurPalsColors.blue.withOpacity(0.12);
+    } else if (type == 'going') {
+      action = 'is going to your event!';
+      icon = Icons.event_available_rounded;
+      iconBg = FurPalsColors.green.withOpacity(0.12);
     } else {
       action = 'sent you a notification.';
       icon = Icons.notifications;

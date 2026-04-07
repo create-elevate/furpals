@@ -116,9 +116,21 @@ class _PetsScreenState extends State<PetsScreen> {
 
   Future<void> _loadEvents() async {
     final snapshot = await FirebaseFirestore.instance.collection('events').orderBy('createdAt', descending: true).get();
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final invalidOwnerPaths = <DocumentReference>[];
     final events = snapshot.docs.map((doc) {
       final data = doc.data();
-      final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final ownerId = data['ownerId'] ?? '';
+      final rawPhotoPath = data['photoPath'];
+      String? photoPath;
+      if (rawPhotoPath is String && rawPhotoPath.isNotEmpty) {
+        if (File(rawPhotoPath).existsSync()) {
+          photoPath = rawPhotoPath;
+        } else if (ownerId == currentUid) {
+          invalidOwnerPaths.add(doc.reference);
+        }
+      }
+
       return PetEvent(
         id: doc.id,
         emoji: data['emoji'] ?? '🐾',
@@ -130,15 +142,28 @@ class _PetsScreenState extends State<PetsScreen> {
         description: data['description'] ?? '',
         color1: Color(data['color1'] ?? FurPalsColors.mint.value),
         color2: Color(data['color2'] ?? FurPalsColors.lavender.value),
-        photoPath: data['photoPath'],
+        photoPath: photoPath,
         photoUrl: data['photoUrl'],
-        isOwner: data['ownerId'] == currentUid,
+        isOwner: ownerId == currentUid,
         ownerName: data['ownerName'] ?? '',
         ownerEmoji: data['ownerEmoji'] ?? '🐾',
-        ownerId: data['ownerId'] ?? '',
-        members: [],
+        ownerId: ownerId,
+        members: ((data['members'] as List<dynamic>?) ?? []).map((item) {
+          if (item is Map<String, dynamic>) {
+            return EventMember.fromMap(item);
+          }
+          if (item is Map) {
+            return EventMember.fromMap(Map<String, dynamic>.from(item));
+          }
+          return EventMember(id: '', name: 'Friend', emoji: '🐾', joinedDate: '');
+        }).toList(),
       );
     }).toList();
+
+    if (invalidOwnerPaths.isNotEmpty) {
+      await Future.wait(invalidOwnerPaths.map((ref) => ref.update({'photoPath': null})));
+    }
+
     setState(() => _events = events);
   }
 
@@ -149,7 +174,7 @@ class _PetsScreenState extends State<PetsScreen> {
       final extension = localPath.split('.').lastWhere((part) => part.isNotEmpty, orElse: () => 'jpg');
       final storageRef = FirebaseStorage.instance
           .ref()
-          .child('event_photos/$currentUid/$docId.$extension');
+          .child('events/$docId/cover.$extension');
       final snapshot = await storageRef.putFile(file);
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
@@ -307,9 +332,30 @@ class _PetsScreenState extends State<PetsScreen> {
     }
   }
 
+  Future<Map<String, String>> _getCurrentUserOwnerData() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return {'name': 'You', 'emoji': '🐾'};
+
+    String ownerName = currentUser.displayName?.trim() ?? '';
+    String ownerEmoji = '🐾';
+
+    final doc = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+    final data = doc.data();
+    if (data != null) {
+      ownerName = data['fullName'] ?? data['username'] ?? ownerName;
+      ownerEmoji = data['emoji'] ?? ownerEmoji;
+    }
+
+    if (ownerName.isEmpty) ownerName = 'You';
+    return {'name': ownerName, 'emoji': ownerEmoji};
+  }
+
   void _addEvent(PetEvent newEvent) async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
+
+    final ownerData = await _getCurrentUserOwnerData();
+
     final docRef = await FirebaseFirestore.instance.collection('events').add({
       'emoji': newEvent.emoji,
       'title': newEvent.title,
@@ -320,11 +366,11 @@ class _PetsScreenState extends State<PetsScreen> {
       'description': newEvent.description,
       'color1': newEvent.color1.value,
       'color2': newEvent.color2.value,
-      'photoPath': newEvent.photoPath,
+      'photoPath': null,
       'photoUrl': null,
       'ownerId': currentUser.uid,
-      'ownerName': 'You',
-      'ownerEmoji': '🐾',
+      'ownerName': ownerData['name'],
+      'ownerEmoji': ownerData['emoji'],
       'members': [],
       'createdAt': FieldValue.serverTimestamp(),
     });
@@ -348,11 +394,11 @@ class _PetsScreenState extends State<PetsScreen> {
       description: newEvent.description,
       color1: newEvent.color1,
       color2: newEvent.color2,
-      photoPath: newEvent.photoPath,
+      photoPath: null,
       photoUrl: uploadedUrl,
       isOwner: true,
-      ownerName: 'You',
-      ownerEmoji: '🐾',
+      ownerName: ownerData['name'] ?? 'You',
+      ownerEmoji: ownerData['emoji'] ?? '🐾',
       ownerId: currentUser.uid,
       members: [],
     );
@@ -375,7 +421,7 @@ class _PetsScreenState extends State<PetsScreen> {
       'description': updated.description,
       'color1': updated.color1.value,
       'color2': updated.color2.value,
-      'photoPath': updated.photoPath,
+      'photoPath': null,
       'photoUrl': photoUrl,
     });
     setState(() {
@@ -392,7 +438,7 @@ class _PetsScreenState extends State<PetsScreen> {
         description: updated.description,
         color1: updated.color1,
         color2: updated.color2,
-        photoPath: updated.photoPath,
+        photoPath: null,
         photoUrl: photoUrl,
         isOwner: updated.isOwner,
         ownerName: updated.ownerName,
@@ -422,6 +468,14 @@ class _PetsScreenState extends State<PetsScreen> {
               eventToEdit: eventToEdit,
             ),
           ));
+        },
+        onMembersUpdated: (updatedMembers) {
+          final index = _events.indexWhere((e) => e.id == event.id);
+          if (index != -1) {
+            setState(() {
+              _events[index] = _events[index].copyWith(members: updatedMembers);
+            });
+          }
         },
       ),
     ));

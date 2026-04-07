@@ -152,6 +152,24 @@ class EventMember {
     required this.emoji,
     required this.joinedDate,
   });
+
+  factory EventMember.fromMap(Map<String, dynamic> map) {
+    return EventMember(
+      id: map['id'] ?? '',
+      name: map['name'] ?? 'Friend',
+      emoji: map['emoji'] ?? '🐾',
+      joinedDate: map['joinedDate'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'emoji': emoji,
+      'joinedDate': joinedDate,
+    };
+  }
 }
 
 class PetEvent {
@@ -192,4 +210,28 @@ class PetEvent {
     required this.ownerId,
     List<EventMember>? members,
   }) : members = members ?? [];
+
+  PetEvent copyWith({
+    List<EventMember>? members,
+  }) {
+    return PetEvent(
+      id: id,
+      emoji: emoji,
+      title: title,
+      location: location,
+      date: date,
+      time: time,
+      category: category,
+      description: description,
+      color1: color1,
+      color2: color2,
+      photoPath: photoPath,
+      photoUrl: photoUrl,
+      isOwner: isOwner,
+      ownerName: ownerName,
+      ownerEmoji: ownerEmoji,
+      ownerId: ownerId,
+      members: members ?? this.members,
+    );
+  }
 }

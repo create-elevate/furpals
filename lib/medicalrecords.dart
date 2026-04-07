@@ -66,6 +66,17 @@ extension MedicalCategoryExt on MedicalCategory {
     }
   }
 
+  String get description {
+    switch (this) {
+      case MedicalCategory.grooming:
+        return 'Record grooming services such as baths, haircuts, nail trims, or salon care. Add date, groomer, place, and notes about coat or behavior.';
+      case MedicalCategory.checkup:
+        return 'Record routine health check-ups or wellness visits. Add date, veterinarian, clinic, and notes about findings or follow-up care.';
+      case MedicalCategory.vaccine:
+        return 'Record vaccination appointments. Add the vaccine or visit title, date, veterinarian, clinic, and notes on the shot or next dose.';
+    }
+  }
+
   String get firestoreKey => name; // 'grooming' | 'checkup' | 'vaccine'
 }
 
@@ -540,6 +551,9 @@ class _AddRecordSheetState extends State<_AddRecordSheet> {
                       style: GoogleFonts.baloo2(fontSize: 18, fontWeight: FontWeight.w800, color: FurPalsColors.textDark)),
                 ]),
                 const SizedBox(height: 8),
+                Text(cat.description,
+                    style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: FurPalsColors.textMid, height: 1.4)),
+                const SizedBox(height: 12),
               ]),
             ),
             Expanded(

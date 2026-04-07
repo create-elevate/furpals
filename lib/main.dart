@@ -20,6 +20,7 @@ import 'package:furpals/vaccinationcard.dart';
 import 'package:furpals/prescriptionscreen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'package:furpals/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +29,9 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // Initialize notifications
+    await NotificationService.initialize();
 
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
