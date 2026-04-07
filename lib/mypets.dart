@@ -56,7 +56,9 @@ class _myPetsScreenState extends State<myPetsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPets();
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null && mounted) _loadPets();
+    });
     _searchCtrl.addListener(_onSearch);
   }
 
@@ -159,6 +161,17 @@ class _myPetsScreenState extends State<myPetsScreen> {
   }
 
   void _showPetViewSheet(Map<String, dynamic> pet) {
+    // ✅ Guard: ensure uid and petId are valid before opening modal
+    if (_currentUid.isEmpty) {
+      _showSnack('Not logged in. Please sign in again.', FurPalsColors.heartRed);
+      return;
+    }
+    final petId = pet['petId'] as String? ?? '';
+    if (petId.isEmpty) {
+      _showSnack('Invalid pet data. Please try again.', FurPalsColors.heartRed);
+      return;
+    }
+
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -177,6 +190,7 @@ class _myPetsScreenState extends State<myPetsScreen> {
           alignment: Alignment.center,
           child: _PetViewModal(
             pet: pet,
+            currentUid: _currentUid,
             onEdit: () {
               if (Navigator.of(context, rootNavigator: true).canPop()) {
                 Navigator.of(context, rootNavigator: true).pop();
@@ -404,12 +418,47 @@ class _myPetsScreenState extends State<myPetsScreen> {
 class _PetViewModal extends StatelessWidget {
   final Map<String, dynamic> pet;
   final VoidCallback onEdit;
+  final String currentUid;
 
-  const _PetViewModal({required this.pet, required this.onEdit});
+  const _PetViewModal({
+    required this.pet,
+    required this.onEdit,
+    required this.currentUid,
+  });
 
   static const _modalBg = Color(0xFFE8C9A0);
   static const _dark = Color(0xFF111111);
   static const _btnClose = Color(0xFFCCE8F0);
+
+  void _safeNavigate(BuildContext context, String route, Map<String, dynamic> args) {
+    // ✅ Guard: validate uid and petId before any Firestore path is constructed
+    if (args['currentUid'] == null || (args['currentUid'] as String).isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Session expired. Please sign in again.',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          backgroundColor: FurPalsColors.heartRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (args['petId'] == null || (args['petId'] as String).isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Invalid pet. Please try again.',
+              style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          backgroundColor: FurPalsColors.heartRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    Navigator.of(context, rootNavigator: true).pop();
+    Future.delayed(const Duration(milliseconds: 200), () {
+      Navigator.pushNamed(context, route, arguments: args);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -729,15 +778,22 @@ class _PetViewModal extends StatelessWidget {
                               endIndent: 16),
                           const SizedBox(height: 8),
 
+                          // ✅ All 4 menu rows now use _safeNavigate
                           _petMenuRow(
                             context: context,
                             icon: Icons.folder_open_rounded,
                             iconColor: const Color(0xFF8B6340),
                             iconBg: const Color(0xFFEDD9B3),
                             label: 'Medical Records',
-                            onTap: () {
-                              Navigator.of(context, rootNavigator: true).pop();
-                            },
+                            onTap: () => _safeNavigate(
+                              context,
+                              '/medicalrecords',
+                              {
+                                'currentUid': currentUid,
+                                'petId': petId,
+                                'petName': name,
+                              },
+                            ),
                           ),
                           _dividerLine(),
                           _petMenuRow(
@@ -746,9 +802,15 @@ class _PetViewModal extends StatelessWidget {
                             iconColor: const Color(0xFF6B8040),
                             iconBg: const Color(0xFFD6EAB3),
                             label: 'Vaccination Card',
-                            onTap: () {
-                              Navigator.of(context, rootNavigator: true).pop();
-                            },
+                            onTap: () => _safeNavigate(
+                              context,
+                              '/vaccinationcard',
+                              {
+                                'currentUid': currentUid,
+                                'petId': petId,
+                                'petName': name,
+                              },
+                            ),
                           ),
                           _dividerLine(),
                           _petMenuRow(
@@ -757,24 +819,17 @@ class _PetViewModal extends StatelessWidget {
                             iconColor: const Color(0xFF5A6E8B),
                             iconBg: const Color(0xFFCFDDEF),
                             label: 'Prescription',
-                            onTap: () {
-                              Navigator.of(context, rootNavigator: true).pop();
-                            },
+                            onTap: () => _safeNavigate(
+                              context,
+                              '/prescriptionscreen',
+                              {
+                                'currentUid': currentUid,
+                                'petId': petId,
+                                'petName': name,
+                              },
+                            ),
                           ),
-                          _dividerLine(),
-                          _petMenuRow(
-                            context: context,
-                            icon: Icons.bar_chart_rounded,
-                            iconColor: const Color(0xFF8B6040),
-                            iconBg: const Color(0xFFEDD9C0),
-                            label: 'History',
-                            onTap: () {
-                              Navigator.of(context, rootNavigator: true).pop();
-                            },
-                            isLast: true,
-                          ),
-
-                          const SizedBox(height: 8),
+                          
                         ],
                       ),
                     ),

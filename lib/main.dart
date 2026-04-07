@@ -15,6 +15,9 @@ import 'package:furpals/newappointment.dart';
 import 'package:furpals/addevent.dart';
 import 'package:furpals/profilescreen.dart';
 import 'package:furpals/mypets.dart';
+import 'package:furpals/medicalrecords.dart';
+import 'package:furpals/vaccinationcard.dart';
+import 'package:furpals/prescriptionscreen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -84,8 +87,30 @@ class MyApp extends StatelessWidget {
 ),  
     '/profilescreen': (context) => const ProfileScreen(),
     '/mypets': (context) => const myPetsScreen(),
-
-
+    '/medicalrecords': (context) {
+  final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>? ?? {};
+  return MedicalRecordsScreen(
+    currentUid: args['currentUid'] as String? ?? '',
+    petId: args['petId'] as String? ?? '',
+    petName: args['petName'] as String? ?? '',
+  );
+},
+'/vaccinationcard': (context) {
+  final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>? ?? {};
+  return VaccinationCardScreen(
+    currentUid: args['currentUid'] as String? ?? '',
+    petId: args['petId'] as String? ?? '',
+    petName: args['petName'] as String? ?? '',
+  );
+},
+'/prescriptionscreen': (context) {
+  final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>? ?? {};
+  return PrescriptionScreen(
+    currentUid: args['currentUid'] as String? ?? '',
+    petId: args['petId'] as String? ?? '',
+    petName: args['petName'] as String? ?? '',
+  );
+},
       },
     
     );
