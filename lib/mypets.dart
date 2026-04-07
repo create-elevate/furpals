@@ -6,7 +6,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
-// ── Colors / gradient ────────────────────────────────────────────────────────
 class FurPalsColors {
   static const blush = Color(0xFFF9C8D0);
   static const peach = Color(0xFFFFD9C0);
@@ -23,6 +22,9 @@ class FurPalsColors {
   static const green = Color(0xFF5DB87A);
   static const shadow = Color(0x20B47864);
   static const heartRed = Color(0xFFE53935);
+  static const purple = Color(0xFF8B6FD4);
+  static const blue = Color(0xFF448AFF);
+  static const creamwhite = Color(0xFFF9E9D5);
 }
 
 const appBackgroundGradient = LinearGradient(
@@ -32,9 +34,6 @@ const appBackgroundGradient = LinearGradient(
   colors: [Color(0xFFFCDDE8), Color(0xFFFFE8D2), Color(0xFFD4F0E4)],
 );
 
-const _speciesOptions = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Fish', 'Other'];
-
-// ── myPetsScreen ─────────────────────────────────────────────────────────────
 class myPetsScreen extends StatefulWidget {
   const myPetsScreen({super.key});
 
@@ -106,7 +105,6 @@ class _myPetsScreenState extends State<myPetsScreen> {
     }
   }
 
-  // ── Add pet sheet ─────────────────────────────────────────────────────────
   void _showAddPetSheet() {
     showModalBottomSheet(
       context: context,
@@ -121,14 +119,13 @@ class _myPetsScreenState extends State<myPetsScreen> {
             _pets.add(newPet);
             _filtered = List.from(_pets);
           });
-          _showSnack('${newPet['name']} added! 🐾', FurPalsColors.green);
+          _showSnack('${newPet['name']} added', FurPalsColors.green);
         },
         onError: (msg) => _showSnack(msg, FurPalsColors.heartRed),
       ),
     );
   }
 
-  // ── Pet detail sheet ──────────────────────────────────────────────────────
   void _showPetDetailSheet(Map<String, dynamic> pet) {
     showModalBottomSheet(
       context: context,
@@ -155,8 +152,41 @@ class _myPetsScreenState extends State<myPetsScreen> {
                 _filtered.indexWhere((p) => p['petId'] == updatedPet['petId']);
             if (fi >= 0) _filtered[fi] = updatedPet;
           });
-          _showSnack('Pet updated 🐾', FurPalsColors.green);
+          _showSnack('Pet updated', FurPalsColors.green);
         },
+      ),
+    );
+  }
+
+  void _showPetViewSheet(Map<String, dynamic> pet) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black.withOpacity(0.50),
+      useRootNavigator: true,
+      transitionDuration: const Duration(milliseconds: 220),
+      transitionBuilder: (_, anim, __, child) => ScaleTransition(
+        scale: CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+        child: FadeTransition(opacity: anim, child: child),
+      ),
+      pageBuilder: (_, __, ___) => MediaQuery.removeViewInsets(
+        removeBottom: true,
+        context: context,
+        child: Align(
+          alignment: Alignment.center,
+          child: _PetViewModal(
+            pet: pet,
+            onEdit: () {
+              if (Navigator.of(context, rootNavigator: true).canPop()) {
+                Navigator.of(context, rootNavigator: true).pop();
+              }
+              Future.delayed(const Duration(milliseconds: 150), () {
+                _showPetDetailSheet(pet);
+              });
+            },
+          ),
+        ),
       ),
     );
   }
@@ -250,8 +280,6 @@ class _myPetsScreenState extends State<myPetsScreen> {
                         fontWeight: FontWeight.w900,
                         color: Colors.white)),
               ),
-              const SizedBox(width: 6),
-              const Text('🐾', style: TextStyle(fontSize: 18)),
             ],
           ),
           const Spacer(),
@@ -365,14 +393,526 @@ class _myPetsScreenState extends State<myPetsScreen> {
         return _PetCard(
           pet: pet,
           gradientColors: pair,
-          onTap: () => _showPetDetailSheet(pet),
+          onTap: () => _showPetViewSheet(pet),
+          onLongPress: () => _showPetDetailSheet(pet),
         );
       },
     );
   }
 }
 
-// ── Add Pet Sheet (standalone StatefulWidget) ─────────────────────────────────
+class _PetViewModal extends StatelessWidget {
+  final Map<String, dynamic> pet;
+  final VoidCallback onEdit;
+
+  const _PetViewModal({required this.pet, required this.onEdit});
+
+  static const _modalBg = Color(0xFFE8C9A0);
+  static const _dark = Color(0xFF111111);
+  static const _btnClose = Color(0xFFCCE8F0);
+
+  @override
+  Widget build(BuildContext context) {
+    final screenH = MediaQuery.of(context).size.height;
+    final screenW = MediaQuery.of(context).size.width;
+
+    final photoURL = pet['photoURL'] as String?;
+    final name = pet['name'] as String? ?? 'Pet';
+    final breed = pet['breed'] as String? ?? '';
+    final age = pet['age'] as String? ?? '';
+    final weight = pet['weight'] as String? ?? '';
+    final sex = pet['sex'] as String? ?? pet['gender'] as String? ?? '';
+    final spayedNeutered = pet['spayedNeutered'] as String? ?? '';
+    final birthday = pet['birthday'] as String? ?? '';
+    final vetName = pet['vetName'] as String? ?? '';
+    final clinic = pet['clinic'] as String? ?? '';
+    final ownerName = pet['ownerName'] as String? ?? '';
+    final ownerPhone = pet['ownerPhone'] as String? ?? '';
+    final allergies =
+        List<String>.from(pet['foodAllergies'] as List? ?? []);
+    final petId = pet['petId'] as String? ?? '';
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: screenW * 0.88,
+        constraints: BoxConstraints(maxHeight: screenH * 0.85),
+        decoration: BoxDecoration(
+          color: _modalBg,
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: Colors.black, width: 2.5),
+          boxShadow: const [
+            BoxShadow(
+                color: Colors.black,
+                offset: Offset(5, 5),
+                blurRadius: 0),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 20, 22, 10),
+              child: Row(
+                children: [
+                  Text('Pet Profile',
+                      style: GoogleFonts.baloo2(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: _dark)),
+                ],
+              ),
+            ),
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.black, width: 2),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(3, 3),
+                          blurRadius: 0),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            height: 160,
+                            width: double.infinity,
+                            child: photoURL != null && photoURL.isNotEmpty
+                                ? Image.network(photoURL,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        _placeholderHeader())
+                                : _placeholderHeader(),
+                          ),
+
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(name,
+                                          style: GoogleFonts.baloo2(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                              color: FurPalsColors.textDark,
+                                              height: 1.1)),
+                                      if (breed.isNotEmpty)
+                                        Text(breed,
+                                            style: GoogleFonts.nunito(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: FurPalsColors.textMid)),
+                                    ],
+                                  ),
+                                ),
+                                if (sex.isNotEmpty && sex != 'Unknown')
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: sex == 'Male'
+                                          ? const Color(0xFFE3EDFF)
+                                          : FurPalsColors.blush,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          sex == 'Male'
+                                              ? Icons.male_rounded
+                                              : Icons.female_rounded,
+                                          size: 14,
+                                          color: sex == 'Male'
+                                              ? FurPalsColors.blue
+                                              : FurPalsColors.pink,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(sex,
+                                            style: GoogleFonts.nunito(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                color: sex == 'Male'
+                                                    ? FurPalsColors.blue
+                                                    : FurPalsColors.pink)),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Column(
+                              children: [
+                                _infoRow(Icons.cake_rounded,
+                                    FurPalsColors.pink,
+                                    FurPalsColors.blush, 'Age',
+                                    age.isNotEmpty ? age : 'N/A'),
+                                const SizedBox(height: 8),
+                                _infoRow(
+                                    Icons.monitor_weight_outlined,
+                                    FurPalsColors.green,
+                                    FurPalsColors.mint,
+                                    'Weight',
+                                    weight.isNotEmpty
+                                        ? '$weight kg'
+                                        : 'N/A'),
+                                if (birthday.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  _infoRow(
+                                      Icons.cake_outlined,
+                                      FurPalsColors.purple,
+                                      FurPalsColors.lavender,
+                                      'Birthday',
+                                      birthday),
+                                ],
+                                if (spayedNeutered.isNotEmpty &&
+                                    spayedNeutered != 'Unknown') ...[
+                                  const SizedBox(height: 8),
+                                  _infoRow(
+                                      Icons.medical_services_outlined,
+                                      const Color(0xFFE9963A),
+                                      FurPalsColors.butter,
+                                      'Spayed / Neutered',
+                                      spayedNeutered),
+                                ],
+                              ],
+                            ),
+                          ),
+
+                          if (allergies.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('FOOD ALLERGIES',
+                                      style: GoogleFonts.nunito(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: FurPalsColors.textMid,
+                                          letterSpacing: 0.4)),
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: allergies
+                                        .map((a) => Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: FurPalsColors.blush,
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
+                                              child: Text(a,
+                                                  style: GoogleFonts.nunito(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      color: FurPalsColors
+                                                          .textDark)),
+                                            ))
+                                        .toList(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+
+                          if (vetName.isNotEmpty ||
+                              clinic.isNotEmpty ||
+                              ownerName.isNotEmpty ||
+                              ownerPhone.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Divider(
+                                height: 1,
+                                color: Color(0xFFF0E4DC),
+                                indent: 16,
+                                endIndent: 16),
+                            const SizedBox(height: 12),
+                          ],
+
+                          if (vetName.isNotEmpty || clinic.isNotEmpty)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('VETERINARIAN',
+                                      style: GoogleFonts.nunito(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: FurPalsColors.textMid,
+                                          letterSpacing: 0.4)),
+                                  const SizedBox(height: 8),
+                                  if (vetName.isNotEmpty)
+                                    _infoRow(
+                                        Icons.person_outlined,
+                                        FurPalsColors.purple,
+                                        FurPalsColors.lavender,
+                                        'Vet Name',
+                                        vetName),
+                                  if (clinic.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    _infoRow(
+                                        Icons.local_hospital_outlined,
+                                        FurPalsColors.heartRed,
+                                        const Color(0xFFFFE2E2),
+                                        'Clinic',
+                                        clinic),
+                                  ],
+                                ],
+                              ),
+                            ),
+
+                          if (ownerName.isNotEmpty ||
+                              ownerPhone.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('OWNER',
+                                      style: GoogleFonts.nunito(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          color: FurPalsColors.textMid,
+                                          letterSpacing: 0.4)),
+                                  const SizedBox(height: 8),
+                                  if (ownerName.isNotEmpty)
+                                    _infoRow(Icons.badge_outlined,
+                                        FurPalsColors.green,
+                                        FurPalsColors.mint, 'Owner',
+                                        ownerName),
+                                  if (ownerPhone.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    _infoRow(Icons.phone_outlined,
+                                        FurPalsColors.blue,
+                                        const Color(0xFFE3EDFF),
+                                        'Contact', ownerPhone),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 16),
+                          const Divider(
+                              height: 1,
+                              color: Color(0xFFF0E4DC),
+                              indent: 16,
+                              endIndent: 16),
+                          const SizedBox(height: 8),
+
+                          _petMenuRow(
+                            context: context,
+                            icon: Icons.folder_open_rounded,
+                            iconColor: const Color(0xFF8B6340),
+                            iconBg: const Color(0xFFEDD9B3),
+                            label: 'Medical Records',
+                            onTap: () {
+                              Navigator.of(context, rootNavigator: true).pop();
+                            },
+                          ),
+                          _dividerLine(),
+                          _petMenuRow(
+                            context: context,
+                            icon: Icons.vaccines_rounded,
+                            iconColor: const Color(0xFF6B8040),
+                            iconBg: const Color(0xFFD6EAB3),
+                            label: 'Vaccination Card',
+                            onTap: () {
+                              Navigator.of(context, rootNavigator: true).pop();
+                            },
+                          ),
+                          _dividerLine(),
+                          _petMenuRow(
+                            context: context,
+                            icon: Icons.receipt_long_rounded,
+                            iconColor: const Color(0xFF5A6E8B),
+                            iconBg: const Color(0xFFCFDDEF),
+                            label: 'Prescription',
+                            onTap: () {
+                              Navigator.of(context, rootNavigator: true).pop();
+                            },
+                          ),
+                          _dividerLine(),
+                          _petMenuRow(
+                            context: context,
+                            icon: Icons.bar_chart_rounded,
+                            iconColor: const Color(0xFF8B6040),
+                            iconBg: const Color(0xFFEDD9C0),
+                            label: 'History',
+                            onTap: () {
+                              Navigator.of(context, rootNavigator: true).pop();
+                            },
+                            isLast: true,
+                          ),
+
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+              child: GestureDetector(
+                onTap: () =>
+                    Navigator.of(context, rootNavigator: true).pop(),
+                child: Container(
+                  width: double.infinity,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: _btnClose,
+                    borderRadius: BorderRadius.circular(50),
+                    border: Border.all(color: _dark, width: 2.5),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black,
+                          offset: Offset(3, 3),
+                          blurRadius: 0)
+                    ],
+                  ),
+                  child: Center(
+                    child: Text('CLOSE',
+                        style: GoogleFonts.baloo2(
+                            fontSize: 14,
+                            letterSpacing: 1.5,
+                            color: _dark)),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _petMenuRow({
+    required BuildContext context,
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    required String label,
+    required VoidCallback onTap,
+    bool isLast = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Center(
+                child: Icon(icon, size: 18, color: iconColor),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(label,
+                  style: GoogleFonts.nunito(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: FurPalsColors.textDark)),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                size: 20, color: FurPalsColors.textMid),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dividerLine() {
+    return const Divider(
+        height: 1, color: Color(0xFFF5ECE4), indent: 64, endIndent: 16);
+  }
+
+  Widget _infoRow(IconData icon, Color iconColor, Color iconBg,
+      String label, String value) {
+    return Row(
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+              color: iconBg, borderRadius: BorderRadius.circular(10)),
+          child: Center(child: Icon(icon, size: 16, color: iconColor)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: GoogleFonts.nunito(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: FurPalsColors.textMid,
+                      letterSpacing: 0.3)),
+              Text(value,
+                  style: GoogleFonts.nunito(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: FurPalsColors.textDark),
+                  overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _placeholderHeader() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+            colors: [FurPalsColors.blush, FurPalsColors.peach]),
+      ),
+      child: const Center(
+        child: Icon(Icons.pets_rounded, color: Colors.white54, size: 60),
+      ),
+    );
+  }
+}
+
 class _AddPetSheet extends StatefulWidget {
   final String currentUid;
   final FirebaseFirestore firestore;
@@ -462,7 +1002,6 @@ class _AddPetSheetState extends State<_AddPetSheet> {
     setState(() => _saving = true);
 
     try {
-      // 1. Upload image separately — don't let it block the save
       String? photoURL;
       if (_imageFile != null) {
         try {
@@ -477,11 +1016,9 @@ class _AddPetSheetState extends State<_AddPetSheet> {
           photoURL = await ref.getDownloadURL();
         } catch (e) {
           debugPrint('Image upload failed (continuing without photo): $e');
-          // Continue saving without photo rather than failing entirely
         }
       }
 
-      // 2. Save to Firestore
       final data = {
         'name': _nameCtrl.text.trim(),
         'breed': _breedCtrl.text.trim(),
@@ -534,7 +1071,6 @@ class _AddPetSheetState extends State<_AddPetSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Drag handle + title
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Column(
@@ -562,7 +1098,6 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Photo picker ───────────────────────────────────
                     Center(
                       child: GestureDetector(
                         onTap: () async {
@@ -620,13 +1155,11 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ── Section: Basic Info ───────────────────────────
-                    _sectionLabel('🐾 Basic Info'),
+                    _sectionLabel('Basic Info'),
                     const SizedBox(height: 10),
                     _editField(_nameCtrl, 'Pet Name *', Icons.pets_rounded),
                     const SizedBox(height: 10),
-                    _editField(
-                        _breedCtrl, 'Breed', Icons.category_rounded),
+                    _editField(_breedCtrl, 'Breed', Icons.category_rounded),
                     const SizedBox(height: 10),
                     Row(
                       children: [
@@ -648,7 +1181,6 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                     ),
                     const SizedBox(height: 10),
 
-                    // Birthday picker
                     GestureDetector(
                       onTap: _pickBirthday,
                       child: Container(
@@ -683,7 +1215,6 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                     ),
                     const SizedBox(height: 10),
 
-                    // Sex dropdown
                     _dropdownField(
                       label: 'Sex',
                       icon: Icons.transgender_rounded,
@@ -693,31 +1224,20 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                     ),
                     const SizedBox(height: 10),
 
-                    // Spayed/Neutered dropdown + yes/no chips
                     _label('Spayed / Neutered'),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _dropdownField(
-                            label: '',
-                            icon: Icons.medical_services_outlined,
-                            value: _spayedNeutered,
-                            items: ['Spayed', 'Neutered', 'Unknown'],
-                            onChanged: (v) =>
-                                setState(() => _spayedNeutered = v!),
-                            showLabel: false,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        // Quick yes/no chips
-                       
-                      ],
+                    _dropdownField(
+                      label: '',
+                      icon: Icons.medical_services_outlined,
+                      value: _spayedNeutered,
+                      items: ['Spayed', 'Neutered', 'Unknown'],
+                      onChanged: (v) =>
+                          setState(() => _spayedNeutered = v!),
+                      showLabel: false,
                     ),
                     const SizedBox(height: 20),
 
-                    // ── Section: Food Allergies ────────────────────────
-                    _sectionLabel('🍖 Food Allergies'),
+                    _sectionLabel('Food Allergies'),
                     const SizedBox(height: 10),
                     Row(
                       children: [
@@ -780,8 +1300,7 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                     ],
                     const SizedBox(height: 20),
 
-                    // ── Section: Vet Info ─────────────────────────────
-                    _sectionLabel('🏥 Veterinarian Info'),
+                    _sectionLabel('Veterinarian Info'),
                     const SizedBox(height: 10),
                     _editField(
                         _vetNameCtrl, 'Veterinarian Name',
@@ -792,8 +1311,7 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                         Icons.local_hospital_outlined),
                     const SizedBox(height: 20),
 
-                    // ── Section: Owner Info ───────────────────────────
-                    _sectionLabel('👤 Owner Info'),
+                    _sectionLabel('Owner Info'),
                     const SizedBox(height: 10),
                     _editField(
                         _ownerNameCtrl, 'Owner Full Name',
@@ -805,7 +1323,6 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                         keyboardType: TextInputType.phone),
                     const SizedBox(height: 28),
 
-                    // ── Save button ───────────────────────────────────
                     GestureDetector(
                       onTap: _saving ? null : _save,
                       child: Container(
@@ -833,7 +1350,7 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                                   child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                       color: Colors.white))
-                              : Text('Add Pet 🐾',
+                              : Text('Add Pet',
                                   style: GoogleFonts.baloo2(
                                       fontSize: 15,
                                       fontWeight: FontWeight.w800,
@@ -874,27 +1391,6 @@ class _AddPetSheetState extends State<_AddPetSheet> {
                 fontWeight: FontWeight.w800,
                 color: FurPalsColors.textMid)),
       );
-
-  Widget _yesNoChip(String val) {
-    final sel = _spayedNeutered == val;
-    return GestureDetector(
-      onTap: () => setState(() => _spayedNeutered = val),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: sel ? FurPalsColors.pink : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: FurPalsColors.pink, width: 1.5),
-        ),
-        child: Text(val,
-            style: GoogleFonts.nunito(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: sel ? Colors.white : FurPalsColors.pink)),
-      ),
-    );
-  }
 
   Widget _dropdownField({
     required String label,
@@ -983,16 +1479,17 @@ class _AddPetSheetState extends State<_AddPetSheet> {
   }
 }
 
-// ── PetCard ───────────────────────────────────────────────────────────────────
 class _PetCard extends StatelessWidget {
   final Map<String, dynamic> pet;
   final List<Color> gradientColors;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const _PetCard({
     required this.pet,
     required this.gradientColors,
     required this.onTap,
+    required this.onLongPress,
   });
 
   @override
@@ -1002,11 +1499,11 @@ class _PetCard extends StatelessWidget {
     final breed = pet['breed'] as String? ?? '';
     final age = pet['age'] as String? ?? '';
     final gender = pet['sex'] as String? ?? pet['gender'] as String? ?? '';
-    final species = pet['species'] as String? ?? '';
     final weight = pet['weight'] as String? ?? '';
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1073,101 +1570,115 @@ class _PetCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.35),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text('Hold to edit',
+                          style: GoogleFonts.nunito(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white)),
+                    ),
+                  ),
                 ],
               ),
             ),
-            // AFTER:
-Padding(
-  padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(name,
-          style: GoogleFonts.baloo2(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: FurPalsColors.textDark,
-              height: 1.2),
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1),
-      if (breed.isNotEmpty)
-        Text(breed,
-            style: GoogleFonts.nunito(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: FurPalsColors.textMid),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1),
-      const SizedBox(height: 6),
-      Row(
-        children: [
-          Expanded(
-            child: _statPill(
-              'Age',
-              age.isNotEmpty ? age : '—',
-              Icons.cake_rounded,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name,
+                      style: GoogleFonts.baloo2(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: FurPalsColors.textDark,
+                          height: 1.2),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1),
+                  if (breed.isNotEmpty)
+                    Text(breed,
+                        style: GoogleFonts.nunito(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: FurPalsColors.textMid),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _statPill(
+                          'Age',
+                          age.isNotEmpty ? age : '—',
+                          Icons.cake_rounded,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _statPill(
+                          'Wt',
+                          weight.isNotEmpty ? '${weight}kg' : '—',
+                          Icons.monitor_weight_outlined,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _statPill(
-              'Wt',
-              weight.isNotEmpty ? '${weight}kg' : '—',
-              Icons.monitor_weight_outlined,
-            ),
-          ),
-        ],
-      ),
-    ],
-  ),
-),
-        
           ],
         ),
       ),
     );
   }
 
-  // AFTER:
-Widget _statPill(String label, String value, IconData icon) {
-  return Container(
-    padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
-    decoration: BoxDecoration(
-      color: const Color(0xFFFFF0E8),
-      borderRadius: BorderRadius.circular(50),
-      border: Border.all(color: const Color(0xFFEDD9B3), width: 1),
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 10, color: FurPalsColors.pink),
-        const SizedBox(height: 1),
-        Text(label,
-            style: GoogleFonts.nunito(
-                fontSize: 8,
-                fontWeight: FontWeight.w700,
-                color: FurPalsColors.textMid)),
-        Text(value,
-            style: GoogleFonts.baloo2(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: FurPalsColors.textDark),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1),
-      ],
-    ),
-  );
-}
+  Widget _statPill(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0E8),
+        borderRadius: BorderRadius.circular(50),
+        border: Border.all(color: const Color(0xFFEDD9B3), width: 1),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: FurPalsColors.pink),
+          const SizedBox(height: 1),
+          Text(label,
+              style: GoogleFonts.nunito(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w700,
+                  color: FurPalsColors.textMid)),
+          Text(value,
+              style: GoogleFonts.baloo2(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: FurPalsColors.textDark),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1),
+        ],
+      ),
+    );
+  }
+
   Widget _placeholder(List<Color> colors) {
     return Container(
       decoration: BoxDecoration(gradient: LinearGradient(colors: colors)),
-      child:
-          const Center(child: Icon(Icons.pets_rounded, color: Colors.white54, size: 48)),
+      child: const Center(
+          child: Icon(Icons.pets_rounded, color: Colors.white54, size: 48)),
     );
   }
 }
 
-// ── Add Pet tile — BIGGER paw (100×100) ──────────────────────────────────────
 class _AddPetTile extends StatelessWidget {
   final VoidCallback onTap;
   const _AddPetTile({required this.onTap});
@@ -1191,7 +1702,6 @@ class _AddPetTile extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // ── BIGGER paw: 100×100 ──────────────────────────────
             SizedBox(
               width: 100,
               height: 100,
@@ -1200,8 +1710,7 @@ class _AddPetTile extends StatelessWidget {
                 children: [
                   CustomPaint(
                     size: const Size(100, 100),
-                    painter:
-                        _PawPrintPainter(color: FurPalsColors.pink),
+                    painter: _PawPrintPainter(color: FurPalsColors.pink),
                   ),
                   const Icon(Icons.add_rounded,
                       color: Colors.white, size: 36),
@@ -1227,7 +1736,6 @@ class _AddPetTile extends StatelessWidget {
   }
 }
 
-// ── Paw print CustomPainter ───────────────────────────────────────────────────
 class _PawPrintPainter extends CustomPainter {
   final Color color;
   const _PawPrintPainter({required this.color});
@@ -1271,7 +1779,6 @@ class _PawPrintPainter extends CustomPainter {
   bool shouldRepaint(_PawPrintPainter old) => old.color != color;
 }
 
-// ── Pet detail / edit sheet ───────────────────────────────────────────────────
 class _PetDetailSheet extends StatefulWidget {
   final Map<String, dynamic> pet;
   final String currentUid;
@@ -1321,13 +1828,15 @@ class _PetDetailSheetState extends State<_PetDetailSheet> {
     _weightCtrl = TextEditingController(text: widget.pet['weight'] ?? '');
     _vetNameCtrl = TextEditingController(text: widget.pet['vetName'] ?? '');
     _clinicCtrl = TextEditingController(text: widget.pet['clinic'] ?? '');
-    _ownerNameCtrl = TextEditingController(text: widget.pet['ownerName'] ?? '');
+    _ownerNameCtrl =
+        TextEditingController(text: widget.pet['ownerName'] ?? '');
     _ownerPhoneCtrl =
         TextEditingController(text: widget.pet['ownerPhone'] ?? '');
     _allergyCtrl = TextEditingController();
     _sex = widget.pet['sex'] ?? widget.pet['gender'] ?? 'Unknown';
     final rawSN = widget.pet['spayedNeutered'] ?? 'Unknown';
-_spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'Unknown';
+    _spayedNeutered =
+        ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'Unknown';
     final bd = widget.pet['birthday'] as String?;
     if (bd != null && bd.isNotEmpty) {
       _birthday = DateTime.tryParse(bd);
@@ -1377,10 +1886,8 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
       String? photoURL = widget.pet['photoURL'] as String?;
       if (_newImageFile != null) {
         try {
-          final ref = widget.storage
-              .ref()
-              .child(
-                  'pets/${widget.currentUid}/${widget.pet['petId']}.jpg');
+          final ref = widget.storage.ref().child(
+              'pets/${widget.currentUid}/${widget.pet['petId']}.jpg');
           await ref.putFile(
               _newImageFile!, SettableMetadata(contentType: 'image/jpeg'));
           photoURL = await ref.getDownloadURL();
@@ -1509,7 +2016,7 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                       borderRadius: BorderRadius.circular(2)),
                 ),
                 const SizedBox(height: 14),
-                Text('Pet Details',
+                Text('Edit Pet',
                     style: GoogleFonts.baloo2(
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
@@ -1523,14 +2030,14 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Avatar
                   Center(
                     child: GestureDetector(
                       onTap: () async {
                         final picked = await ImagePicker().pickImage(
                             source: ImageSource.gallery, imageQuality: 80);
                         if (picked != null) {
-                          setState(() => _newImageFile = File(picked.path));
+                          setState(
+                              () => _newImageFile = File(picked.path));
                         }
                       },
                       child: Stack(
@@ -1590,7 +2097,7 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                   ),
                   const SizedBox(height: 20),
 
-                  _sectionLabel('🐾 Basic Info'),
+                  _sectionLabel('Basic Info'),
                   const SizedBox(height: 10),
                   _field(_nameCtrl, 'Pet Name', Icons.pets_rounded),
                   const SizedBox(height: 10),
@@ -1617,8 +2124,8 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(14),
-                        border:
-                            Border.all(color: FurPalsColors.blush, width: 1.5),
+                        border: Border.all(
+                            color: FurPalsColors.blush, width: 1.5),
                       ),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 14),
@@ -1653,26 +2160,18 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                   const SizedBox(height: 10),
                   _label('Spayed / Neutered'),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _dropdownField(
-                          label: '',
-                          icon: Icons.medical_services_outlined,
-                          value: _spayedNeutered,
-                          items: ['Spayed', 'Neutered', 'Unknown'],
-                          onChanged: (v) =>
-                              setState(() => _spayedNeutered = v!),
-                          showLabel: false,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      
-                    ],
+                  _dropdownField(
+                    label: '',
+                    icon: Icons.medical_services_outlined,
+                    value: _spayedNeutered,
+                    items: ['Spayed', 'Neutered', 'Unknown'],
+                    onChanged: (v) =>
+                        setState(() => _spayedNeutered = v!),
+                    showLabel: false,
                   ),
                   const SizedBox(height: 20),
 
-                  _sectionLabel('🍖 Food Allergies'),
+                  _sectionLabel('Food Allergies'),
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -1714,7 +2213,8 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                                     horizontal: 12, vertical: 6),
                                 decoration: BoxDecoration(
                                   color: FurPalsColors.blush,
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius:
+                                      BorderRadius.circular(20),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -1723,12 +2223,14 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                                         style: GoogleFonts.nunito(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
-                                            color: FurPalsColors.textDark)),
+                                            color:
+                                                FurPalsColors.textDark)),
                                     const SizedBox(width: 6),
                                     GestureDetector(
-                                      onTap: () =>
-                                          setState(() => _allergies.remove(a)),
-                                      child: const Icon(Icons.close_rounded,
+                                      onTap: () => setState(
+                                          () => _allergies.remove(a)),
+                                      child: const Icon(
+                                          Icons.close_rounded,
                                           size: 14,
                                           color: FurPalsColors.pink),
                                     ),
@@ -1740,7 +2242,7 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                   ],
                   const SizedBox(height: 20),
 
-                  _sectionLabel('🏥 Veterinarian Info'),
+                  _sectionLabel('Veterinarian Info'),
                   const SizedBox(height: 10),
                   _field(_vetNameCtrl, 'Veterinarian Name',
                       Icons.person_outlined),
@@ -1749,7 +2251,7 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                       Icons.local_hospital_outlined),
                   const SizedBox(height: 20),
 
-                  _sectionLabel('👤 Owner Info'),
+                  _sectionLabel('Owner Info'),
                   const SizedBox(height: 10),
                   _field(_ownerNameCtrl, 'Owner Full Name',
                       Icons.badge_outlined),
@@ -1783,7 +2285,8 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
+                                    strokeWidth: 2,
+                                    color: Colors.white))
                             : Text('Save Changes',
                                 style: GoogleFonts.baloo2(
                                     fontSize: 15,
@@ -1853,27 +2356,6 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                 color: FurPalsColors.textMid)),
       );
 
-  Widget _yesNoChip(String val) {
-    final sel = _spayedNeutered == val;
-    return GestureDetector(
-      onTap: () => setState(() => _spayedNeutered = val),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: sel ? FurPalsColors.pink : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: FurPalsColors.pink, width: 1.5),
-        ),
-        child: Text(val,
-            style: GoogleFonts.nunito(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: sel ? Colors.white : FurPalsColors.pink)),
-      ),
-    );
-  }
-
   Widget _dropdownField({
     required String label,
     required IconData icon,
@@ -1903,7 +2385,8 @@ _spayedNeutered = ['Spayed', 'Neutered', 'Unknown'].contains(rawSN) ? rawSN : 'U
                     fontWeight: FontWeight.w700,
                     color: FurPalsColors.textDark),
                 items: items
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                    .map((e) =>
+                        DropdownMenuItem(value: e, child: Text(e)))
                     .toList(),
                 onChanged: onChanged,
               ),
