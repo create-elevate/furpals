@@ -6,7 +6,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:furpals/mypets.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:async';
 import 'package:furpals/notification_service.dart';
+import 'package:video_player/video_player.dart';
 
 class FurPalsColors {
   static const blush = Color(0xFFF9C8D0);
@@ -1153,9 +1155,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return 0;
     });
 
-    final postsOnly = sorted
-        .where((post) => (post['mediaType'] as String? ?? 'none') != 'video')
-        .toList();
+    final postsOnly = sorted;
 
     if (postsOnly.isEmpty) {
       return Center(
@@ -1208,6 +1208,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final isLiked = _likedPostIds.contains(postId);
 
         return GestureDetector(
+          onTap: () => _showMediaViewer(mediaURL, mediaType),
           onLongPress: () => _showPostActionsSheet(
             post: post,
             postId: postId,
@@ -1395,6 +1396,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: BoxDecoration(gradient: LinearGradient(colors: pair)),
       child: const Center(
         child: Icon(Icons.pets_rounded, color: Colors.white54, size: 28),
+      ),
+    );
+  }
+
+  void _showMediaViewer(String mediaURL, String mediaType) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.zero,
+        child: mediaType == 'photo'
+            ? InteractiveViewer(
+                child: Image.network(mediaURL, fit: BoxFit.contain),
+              )
+            : _NetworkVideoPlayer(url: mediaURL),
       ),
     );
   }
@@ -2828,6 +2844,252 @@ class PetsPagePlaceholder extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _NetworkVideoPlayer extends StatefulWidget {
+  final String url;
+  const _NetworkVideoPlayer({required this.url});
+
+  @override
+  State<_NetworkVideoPlayer> createState() => _NetworkVideoPlayerState();
+}
+
+class _NetworkVideoPlayerState extends State<_NetworkVideoPlayer>
+    with WidgetsBindingObserver {
+  VideoPlayerController? _controller;
+  bool _initialized = false;
+  bool _hasError = false;
+  bool _isMuted = true;
+  bool _showControls = false;
+  Timer? _overlayTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _controller = VideoPlayerController.network(widget.url)
+      ..setLooping(true)
+      ..setVolume(0)
+      ..addListener(_handleVideoState)
+      ..initialize()
+          .then((_) {
+            if (mounted)
+              setState(() {
+                _initialized = true;
+                _hasError = false;
+              });
+          })
+          .catchError((e) {
+            if (mounted) setState(() => _hasError = true);
+          });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) _controller?.pause();
+  }
+
+  void _handleVideoState() {
+    if (_controller?.value.hasError ?? false) {
+      setState(() => _hasError = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _overlayTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _controller?.removeListener(_handleVideoState);
+    _controller?.pause();
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _togglePlayback() {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_controller!.value.isPlaying) {
+      _controller?.pause();
+    } else {
+      _controller?.play();
+    }
+    _showControls = true;
+    _overlayTimer?.cancel();
+    _overlayTimer = Timer(const Duration(seconds: 1), () {
+      if (mounted) setState(() => _showControls = false);
+    });
+  }
+
+  void _seekForward() {
+    if (_controller != null) {
+      final duration = _controller!.value.duration;
+      final newPosition =
+          _controller!.value.position + const Duration(seconds: 10);
+      _controller!.seekTo(newPosition > duration ? duration : newPosition);
+    }
+  }
+
+  void _seekBackward() {
+    if (_controller != null) {
+      final newPosition =
+          _controller!.value.position - const Duration(seconds: 10);
+      _controller!.seekTo(
+        newPosition < Duration.zero ? Duration.zero : newPosition,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasError) {
+      return Container(
+        width: double.infinity,
+        height: 220,
+        decoration: BoxDecoration(
+          color: FurPalsColors.lavender,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Center(
+          child: Text(
+            'Video unavailable. Please try a smaller file or check connection.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.nunito(
+              color: FurPalsColors.textDark,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (!_initialized || _controller == null) {
+      return const Center(
+        child: CircularProgressIndicator(color: FurPalsColors.pink),
+      );
+    }
+
+    final aspectRatio = _controller!.value.aspectRatio > 0
+        ? _controller!.value.aspectRatio
+        : 16 / 9;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        AspectRatio(
+          aspectRatio: aspectRatio,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              VideoPlayer(_controller!),
+              if (!_controller!.value.isInitialized)
+                Container(
+                  color: Colors.black54,
+                  child: const Center(
+                    child: CircularProgressIndicator(color: FurPalsColors.pink),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Positioned.fill(
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onDoubleTap: _seekBackward,
+                  onTap: () => setState(() => _togglePlayback()),
+                  onHorizontalDragEnd: (details) {
+                    if (details.primaryVelocity != null) {
+                      if (details.primaryVelocity! > 0)
+                        _seekBackward();
+                      else
+                        _seekForward();
+                    }
+                  },
+                  child: Container(
+                    color: Colors.transparent,
+                    alignment: Alignment.center,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onDoubleTap: _seekForward,
+                  onTap: () => setState(() => _togglePlayback()),
+                  onHorizontalDragEnd: (details) {
+                    if (details.primaryVelocity != null) {
+                      if (details.primaryVelocity! > 0)
+                        _seekBackward();
+                      else
+                        _seekForward();
+                    }
+                  },
+                  child: Container(
+                    color: Colors.transparent,
+                    alignment: Alignment.center,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_showControls)
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (_controller!.value.isPlaying) {
+                    _controller?.pause();
+                  } else {
+                    _controller?.play();
+                  }
+                  _showControls = true;
+                  _overlayTimer?.cancel();
+                  _overlayTimer = Timer(const Duration(seconds: 1), () {
+                    if (mounted) setState(() => _showControls = false);
+                  });
+                });
+              },
+              child: Container(
+                color: Colors.transparent,
+                alignment: Alignment.center,
+                child: Icon(
+                  _controller!.value.isPlaying
+                      ? Icons.pause_circle_filled
+                      : Icons.play_circle_filled,
+                  size: 56,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ),
+        Positioned(
+          top: 8,
+          right: 8,
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _isMuted = !_isMuted;
+                _controller?.setVolume(_isMuted ? 0 : 1);
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
