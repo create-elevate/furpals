@@ -5,14 +5,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:furpals/models.dart';
 
 class AddEventScreen extends StatefulWidget {
-  final int existingEventCount;
   final Function(PetEvent) onAdd;
   final Function(PetEvent) onUpdate; // ← separate callback for edits
   final PetEvent? eventToEdit;
 
   const AddEventScreen({
     super.key,
-    required this.existingEventCount,
     required this.onAdd,
     required this.onUpdate,
     this.eventToEdit,
@@ -164,9 +162,15 @@ class _AddEventScreenState extends State<AddEventScreen> with TickerProviderStat
   }
 
   Future<void> _pickPhoto() async {
-    final picker = ImagePicker();
-    final file   = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
-    if (file != null) setState(() => _pickedPhoto = File(file.path));
+    try {
+      final picker = ImagePicker();
+      final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+      if (file != null) {
+        setState(() => _pickedPhoto = File(file.path));
+      }
+    } catch (e) {
+      _showSnack('Failed to pick image: $e');
+    }
   }
 
   String get _dateLabel {
@@ -243,7 +247,7 @@ class _AddEventScreenState extends State<AddEventScreen> with TickerProviderStat
     final colors = _colorPairs[_selectedColorIndex];
 
     final result = PetEvent(
-      id:          _isEditMode ? widget.eventToEdit!.id : widget.existingEventCount,
+      id:          _isEditMode ? widget.eventToEdit!.id : '',
       emoji:       _isEditMode ? widget.eventToEdit!.emoji : '🐾',
       title:       _titleCtrl.text.trim(),
       location:    _locationCtrl.text.trim(),
@@ -257,6 +261,7 @@ class _AddEventScreenState extends State<AddEventScreen> with TickerProviderStat
       isOwner:     true,
       ownerName:   _isEditMode ? widget.eventToEdit!.ownerName : 'You',
       ownerEmoji:  _isEditMode ? widget.eventToEdit!.ownerEmoji : '🐾',
+      ownerId:     _isEditMode ? widget.eventToEdit!.ownerId : '',
       members:     _isEditMode ? widget.eventToEdit!.members : [],
     );
 

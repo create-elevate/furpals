@@ -49,13 +49,94 @@ class Pet {
   });
 }
 
+class LostPet {
+  String id;
+  String type; // DOG, CAT, BIRD, OTHER
+  String name;
+  String breed;
+  String? gender;
+  String? weight;
+  String? age;
+  String location;
+  String description;
+  List<String> photoUrls; // For storing Firebase Storage URLs
+  DateTime createdAt;
+  DateTime? dateMissing; // When the pet went missing
+  String userId; // ID of the user who reported
+  String posterName; // Full name of the user who reported
+
+  LostPet({
+    required this.id,
+    required this.type,
+    required this.name,
+    required this.breed,
+    this.gender,
+    this.weight,
+    this.age,
+    required this.location,
+    required this.description,
+    required this.photoUrls,
+    required this.createdAt,
+    this.dateMissing,
+    required this.userId,
+    required this.posterName,
+  });
+
+  // Convert to Firestore document
+  Map<String, dynamic> toMap() {
+    return {
+      'type': type,
+      'name': name,
+      'breed': breed,
+      'gender': gender,
+      'weight': weight,
+      'age': age,
+      'location': location,
+      'description': description,
+      'photoUrls': photoUrls,
+      'createdAt': createdAt.toIso8601String(),
+      'dateMissing': dateMissing?.toIso8601String(),
+      'userId': userId,
+      'posterName': posterName,
+    };
+  }
+
+  // Create from Firestore document
+  factory LostPet.fromMap(String id, Map<String, dynamic> map) {
+    return LostPet(
+      id: id,
+      type: map['type'] ?? '',
+      name: map['name'] ?? '',
+      breed: map['breed'] ?? '',
+      gender: map['gender'],
+      weight: map['weight'],
+      age: map['age'],
+      location: map['location'] ?? '',
+      description: map['description'] ?? '',
+      photoUrls: List<String>.from(map['photoUrls'] ?? []),
+      createdAt: DateTime.parse(map['createdAt'] ?? DateTime.now().toIso8601String()),
+      dateMissing: map['dateMissing'] != null ? DateTime.parse(map['dateMissing']) : null,
+      userId: map['userId'] ?? '',
+      posterName: map['posterName'] ?? '',
+    );
+  }
+}
+
 class Appointment {
-  int id, petId;
-  String title, vet, date, time, type, notes, status;
+  String id;
+  int petId;
+  String title, vet, date, time, type, notes, status, ownerId;
   Appointment({
-    required this.id, required this.petId, required this.title,
-    required this.vet, required this.date, required this.time,
-    required this.type, required this.notes, required this.status,
+    required this.id,
+    required this.petId,
+    required this.title,
+    required this.vet,
+    required this.date,
+    required this.time,
+    required this.type,
+    required this.notes,
+    required this.status,
+    required this.ownerId,
   });
 }
 
@@ -71,10 +152,28 @@ class EventMember {
     required this.emoji,
     required this.joinedDate,
   });
+
+  factory EventMember.fromMap(Map<String, dynamic> map) {
+    return EventMember(
+      id: map['id'] ?? '',
+      name: map['name'] ?? 'Friend',
+      emoji: map['emoji'] ?? '🐾',
+      joinedDate: map['joinedDate'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'emoji': emoji,
+      'joinedDate': joinedDate,
+    };
+  }
 }
 
 class PetEvent {
-  final int id;
+  final String id;
   final String emoji;
   final String title;
   final String location;
@@ -85,9 +184,11 @@ class PetEvent {
   final Color color1;
   final Color color2;
   final String? photoPath;
+  final String? photoUrl;
   final bool isOwner;
   final String ownerName;
   final String ownerEmoji;
+  final String ownerId;
   List<EventMember> members;
 
   PetEvent({
@@ -102,9 +203,35 @@ class PetEvent {
     required this.color1,
     required this.color2,
     this.photoPath,
+    this.photoUrl,
     this.isOwner = false,
     this.ownerName = '',
     this.ownerEmoji = '🐾',
+    required this.ownerId,
     List<EventMember>? members,
   }) : members = members ?? [];
+
+  PetEvent copyWith({
+    List<EventMember>? members,
+  }) {
+    return PetEvent(
+      id: id,
+      emoji: emoji,
+      title: title,
+      location: location,
+      date: date,
+      time: time,
+      category: category,
+      description: description,
+      color1: color1,
+      color2: color2,
+      photoPath: photoPath,
+      photoUrl: photoUrl,
+      isOwner: isOwner,
+      ownerName: ownerName,
+      ownerEmoji: ownerEmoji,
+      ownerId: ownerId,
+      members: members ?? this.members,
+    );
+  }
 }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:furpals/lf_add_missing.dart';
+import 'package:furpals/lostfoundprofile.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:furpals/NotificationScreen.dart';
-import 'package:furpals/lost&found.dart';
-import 'package:furpals/Homescreen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:furpals/models.dart' as models;
 
 class FurPalsColors {
   static const blush       = Color(0xFFF9C8D0);
@@ -51,28 +53,74 @@ class LostFoundScreen extends StatefulWidget {
 
 
 class _LostFoundScreenState extends State<LostFoundScreen> {
-  String _selectedFilter = 'DOG';
+  String _selectedFilter = 'ALL';
+  String _currentUserName = 'FurPals User';
   final TextEditingController _searchController = TextEditingController();
   bool _hasNewNotif = true;
+  List<models.LostPet> _lostPets = [];
+  bool _isLoading = true;
+  Set<String> _likedPets = Set<String>();
+  // Dynamic filters based on posted pet types
+  List<Map<String, dynamic>> get _dynamicFilters {
+    final petTypes = <String>{};
+    for (final pet in _lostPets) {
+      petTypes.add(pet.type.toUpperCase());
+    }
 
-  
-  final List<Map<String, dynamic>> _filters = [
-    {'label': 'DOG',  'asset': 'assets/icons/dog_filter.png'},
-    {'label': 'CAT',  'asset': 'assets/icons/cat_filter.png'},
-    {'label': 'BIRD', 'asset': 'assets/icons/bird_filter.png'},
-  ];
+    final filters = <Map<String, dynamic>>[
+      {'label': 'ALL', 'emoji': '🐾'},
+    ];
 
-  final List<Map<String, dynamic>> _pets = [
-    {'name': 'Pet Name', 'breed': 'pet breed', 'age': 'Age', 'gender': 'Gender', 'liked': false, 'image': null},
-    {'name': 'Pet Name', 'breed': 'pet breed', 'age': 'Age', 'gender': 'Gender', 'liked': false, 'image': null},
-    {'name': 'Pet Name', 'breed': 'pet breed', 'age': 'Age', 'gender': 'Gender', 'liked': false, 'image': null},
-  ];
+    for (final type in petTypes) {
+      filters.add({
+        'label': type,
+        'emoji': _emojiForPetType(type.toLowerCase()),
+      });
+    }
+
+    return filters;
+  }
   
+
+  @override
+  void initState() {
+    super.initState();
+    _setCurrentUserName();
+    _fetchLostPets();
+  }
+
+  Future<void> _setCurrentUserName() async {
+    final user = FirebaseAuth.instance.currentUser;
+    setState(() {
+      _currentUserName = user?.displayName?.trim().isNotEmpty == true
+          ? user!.displayName!
+          : (user?.email?.split('@').first ?? 'FurPals User');
+    });
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchLostPets() async {
+    setState(() => _isLoading = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('lost_pets')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      _lostPets = snapshot.docs
+          .map((doc) => models.LostPet.fromMap(doc.id, doc.data()))
+          .toList();
+    } catch (e) {
+      // Handle error
+      print('Error fetching lost pets: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -136,7 +184,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
           Expanded(
             child: Row(
               children: [
-                Text('Mickaluvsyou', // username display in top bar
+                Text(_currentUserName, // username display in top bar
                     style: GoogleFonts.baloo2(
                       fontSize: 25,
                       fontWeight: FontWeight.w800,
@@ -239,23 +287,26 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
 
   // ── FILTER ROW ────────────────────────────────────────────────────────────
   Widget _buildFilterRow() {
-    return Row(
-      children: [
-        ..._filters.map((f) => _filterChip(f['label'] as String, f['asset'] as String)),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () {},
-          child: Container(
-            width: 34, height: 34,
-            decoration: const BoxDecoration(color: FurPalsColors.textDark, shape: BoxShape.circle),
-            child: const Icon(Icons.add, color: Colors.white, size: 20),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          ..._dynamicFilters.map((f) => _filterChip(f['label'] as String, f['emoji'] as String)),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () {},
+            child: Container(
+              width: 34, height: 34,
+              decoration: const BoxDecoration(color: FurPalsColors.textDark, shape: BoxShape.circle),
+              child: const Icon(Icons.add, color: Colors.white, size: 20),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _filterChip(String label, String assetPath) {
+  Widget _filterChip(String label, String emoji) {
     final bool isSelected = _selectedFilter == label;
     return GestureDetector(
       onTap: () => setState(() => _selectedFilter = label),
@@ -273,8 +324,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(assetPath, width: 20, height: 20,
-                errorBuilder: (_, __, ___) => const SizedBox(width: 20)),
+            Text(emoji, style: const TextStyle(fontSize: 16)),
             const SizedBox(width: 5),
             Text(label,
                 style: GoogleFonts.nunito(
@@ -287,8 +337,43 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     );
   }
 
+  String _emojiForPetType(String type) {
+    final normalized = type.trim().toLowerCase();
+    switch (normalized) {
+      case 'dog':
+        return '🐶';
+      case 'cat':
+        return '🐱';
+      case 'bird':
+        return '🐦';
+      case 'fish':
+        return '🐠';
+      case 'rabbit':
+      case 'bunny':
+        return '🐰';
+      case 'hamster':
+        return '🐹';
+      case 'reptile':
+        return '🦎';
+      case 'horse':
+        return '🐴';
+      case 'other':
+        return '🐾';
+      default:
+        return '🐾';
+    }
+  }
+
   // ── PET GRID ──────────────────────────────────────────────────────────────
   Widget _buildPetGrid() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final filteredPets = _selectedFilter == 'ALL'
+        ? _lostPets
+        : _lostPets.where((pet) => pet.type.toUpperCase() == _selectedFilter).toList();
+
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -298,19 +383,21 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
       childAspectRatio: 0.80,
       children: [
         _buildAddCard(),
-        ..._pets.map((pet) => _buildPetCard(pet)),
+        ...filteredPets.map((pet) => _buildPetCard(pet)),
       ],
     );
   }
 
   Widget _buildAddCard() {
     return GestureDetector(
-
-    onTap: () => Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const AddMissingPetScreen()),
-    ),
-  
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AddMissingPetScreen()),
+        );
+        // Refresh the list after returning
+        _fetchLostPets();
+      },
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -328,14 +415,40 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     );
   }
 
-  Widget _buildPetCard(Map<String, dynamic> pet) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 8, offset: Offset(0, 2))],
-      ),
-      child: Column(
+  Widget _buildPetCard(models.LostPet pet) {
+    final isLiked = _likedPets.contains(pet.id);
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LostFoundProfileScreen(
+              pet: {
+                'petId': pet.id,
+                'userId': pet.userId,
+                'photos': pet.photoUrls,
+                'name': pet.name,
+                'breed': pet.breed,
+                'age': pet.age ?? '0',
+                'gender': pet.gender ?? '-',
+                'weight': pet.weight ?? '0',
+                'ownerName': pet.posterName.isNotEmpty ? pet.posterName : 'Unknown Owner',
+                'location': pet.location,
+                'description': pet.description,
+                'type': pet.type,
+                'dateMissing': pet.dateMissing?.toString().split(' ')[0] ?? 'Unknown',
+              },
+            ),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [BoxShadow(color: FurPalsColors.shadow, blurRadius: 8, offset: Offset(0, 2))],
+        ),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
@@ -346,20 +459,58 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
                   child: Container(
                     width: double.infinity,
                     color: FurPalsColors.blush.withOpacity(0.4),
-                    child: Center(
-                      child: Icon(Icons.pets, size: 36, color: FurPalsColors.pink.withOpacity(0.4)),
-                    ),
+                    child: pet.photoUrls.isNotEmpty
+                        ? Image.network(
+                            pet.photoUrls.first,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  value: loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                      : null,
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(FurPalsColors.pink),
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              print('Error loading image: $error');
+                              return Center(
+                                child: Icon(
+                                  Icons.pets,
+                                  size: 36,
+                                  color: FurPalsColors.pink.withOpacity(0.4),
+                                ),
+                              );
+                            },
+                          )
+                        : Center(
+                            child: Icon(
+                              Icons.pets,
+                              size: 36,
+                              color: FurPalsColors.pink.withOpacity(0.4),
+                            ),
+                          ),
                   ),
                 ),
                 Positioned(
                   top: 8, right: 8,
                   child: GestureDetector(
-                    onTap: () => setState(() => pet['liked'] = !(pet['liked'] as bool)),
+                    onTap: () => setState(() {
+                      if (isLiked) {
+                        _likedPets.remove(pet.id);
+                      } else {
+                        _likedPets.add(pet.id);
+                      }
+                    }),
                     child: Container(
                       width: 30, height: 30,
                       decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                       child: Icon(
-                        (pet['liked'] as bool) ? Icons.favorite : Icons.favorite_border,
+                        isLiked ? Icons.favorite : Icons.favorite_border,
                         size: 16, color: FurPalsColors.heartRed,
                       ),
                     ),
@@ -375,25 +526,51 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
               children: [
                 Row(
                   children: [
-                    Text(pet['name'] as String,
+                    Text(
+                      _emojiForPetType(pet.type),
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(pet.name,
                         style: GoogleFonts.nunito(
                             fontWeight: FontWeight.w800, fontSize: 12, color: FurPalsColors.textDark)),
                     const SizedBox(width: 4),
                     Flexible(
-                      child: Text('(${pet['breed']})',
+                      child: Text('(${pet.breed})',
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.nunito(fontSize: 11, color: FurPalsColors.textMid)),
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text('${pet['age']} | ${pet['gender']}',
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: FurPalsColors.pink.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    pet.type.toUpperCase(),
+                    style: GoogleFonts.nunito(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: FurPalsColors.pink,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text('${pet.age ?? 'Unknown age'} | ${pet.gender ?? 'Unknown gender'}',
                     style: GoogleFonts.nunito(fontSize: 11, color: FurPalsColors.textMid)),
+                if (pet.posterName.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text('Posted by ${pet.posterName}',
+                      style: GoogleFonts.nunito(fontSize: 10, color: FurPalsColors.textMid.withOpacity(0.8))),
+                ],
               ],
             ),
           ),
         ],
       ),
-    );
+    ));
   }
 }

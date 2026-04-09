@@ -13,8 +13,14 @@ import 'package:furpals/NotificationScreen.dart';
 import 'package:furpals/petmanagement.dart';
 import 'package:furpals/newappointment.dart';
 import 'package:furpals/addevent.dart';
+import 'package:furpals/profilescreen.dart';
+import 'package:furpals/mypets.dart';
+import 'package:furpals/medicalrecords.dart';
+import 'package:furpals/vaccinationcard.dart';
+import 'package:furpals/prescriptionscreen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'package:furpals/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +29,9 @@ Future<void> main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // Initialize notifications
+    await NotificationService.initialize();
 
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
@@ -69,10 +78,10 @@ class MyApp extends StatelessWidget {
       '/petmanagement': (context) => const PetsScreen(),
     '/newappointment': (context) => const CalendarScreen(
   pets: [],
-  existingAppointmentCount: 0,
+
 ),
     '/addevent': (context) => AddEventScreen(
-  existingEventCount: 0,
+
   onAdd: (newEvent) {
     
   },
@@ -80,7 +89,37 @@ class MyApp extends StatelessWidget {
     
   },
 ),  
+    '/profilescreen': (context) => const ProfileScreen(),
+    '/mypets': (context) => const myPetsScreen(),
+    '/medicalrecords': (context) {
+  final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>? ?? {};
+  return MedicalRecordsScreen(
+    currentUid: args['currentUid'] as String? ?? '',
+    petId: args['petId'] as String? ?? '',
+    petName: args['petName'] as String? ?? '',
+  );
+},
+'/vaccinationcard': (context) {
+  final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>? ?? {};
+  return VaccinationCardScreen(
+    currentUid: args['currentUid'] as String? ?? '',
+    petId: args['petId'] as String? ?? '',
+    petName: args['petName'] as String? ?? '',
+  );
+},
+'/prescriptionscreen': (context) {
+  final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>? ?? {};
+  return PrescriptionScreen(
+    currentUid: args['currentUid'] as String? ?? '',
+    petId: args['petId'] as String? ?? '',
+    petName: args['petName'] as String? ?? '',
+  );
+},
       },
-);
+    
+    );
+ 
+ 
+
   }
 }
