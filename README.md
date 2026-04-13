@@ -77,7 +77,7 @@ FurPals is a Flutter-based mobile application that brings pet owners together th
 
 ---
 
-## 🚀 Quick Start Guide
+##  Quick Start Guide
 
 ### Prerequisites
 
@@ -144,7 +144,7 @@ flutter build ios --release
 
 ---
 
-## ⚙️ Environment Setup
+##  Environment Setup
 
 All Firebase configuration is stored in `lib/firebase_options.dart`. The following keys and values must be present and valid for the app to function. These are generated automatically by the FlutterFire CLI when you connect your Firebase project.
 
@@ -225,7 +225,7 @@ furpals/
 
 ---
 
-## 📦 Key Dependencies
+##  Key Dependencies
 
 | Package | Version | Purpose |
 |---|---|---|
@@ -239,4 +239,14 @@ furpals/
 | `video_compress` | ^3.1.2 | Video compression before upload |
 | `shared_preferences` | ^2.2.2 | Local "Remember Me" storage |
 | `gal` | ^2.0.3 | Save media to device gallery |
+
+---
+
+##FIREBASE ACCOUNT
+
+email: lefurpals@gmail.com
+password: deuxthoupals@548123
+passkey (mfa): alwaysbemybaby
+
+
 
